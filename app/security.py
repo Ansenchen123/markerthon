@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import MerchantUser
+from app.models import GovernmentUser, MerchantUser
 
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -90,8 +90,26 @@ def get_current_user(
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
     payload = decode_access_token(credentials.credentials)
+    if payload.get("role") != "merchant":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Merchant token required")
     user_id = payload.get("userId")
     user = db.scalar(select(MerchantUser).where(MerchantUser.id == user_id))
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive or missing user")
+    return user
+
+
+def get_current_government_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> GovernmentUser:
+    if credentials is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+    payload = decode_access_token(credentials.credentials)
+    if payload.get("role") != "government":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Government token required")
+    user_id = payload.get("userId")
+    user = db.scalar(select(GovernmentUser).where(GovernmentUser.id == user_id))
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive or missing user")
     return user

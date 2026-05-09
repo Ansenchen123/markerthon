@@ -54,6 +54,12 @@ def login_headers(client: TestClient, username: str = "tea_owner") -> dict[str, 
     return {"Authorization": f"Bearer {response.json()['accessToken']}"}
 
 
+def government_headers(client: TestClient) -> dict[str, str]:
+    response = client.post("/government/auth/login", json={"username": "gov_admin", "password": "password123"})
+    assert response.status_code == 200
+    return {"Authorization": f"Bearer {response.json()['accessToken']}"}
+
+
 def create_qr_batch(client: TestClient, headers: dict[str, str], invoice: str = "INV-001", cup_count: int = 1) -> dict:
     response = client.post(
         "/merchant/qr-codes",
@@ -86,6 +92,22 @@ def test_login_success_and_failure(context):
 
     failure = client.post("/auth/login", json={"username": "tea_owner", "password": "bad"})
     assert failure.status_code == 401
+
+
+def test_government_login_and_role_isolation(context):
+    client, _ = context
+    gov_headers = government_headers(client)
+    merchant_headers = login_headers(client)
+    params = stats_range()
+
+    overview = client.get("/government/overview", headers=gov_headers, params=params)
+    assert overview.status_code == 200
+
+    merchant_on_government = client.get("/government/overview", headers=merchant_headers, params=params)
+    assert merchant_on_government.status_code == 403
+
+    government_on_merchant = client.get("/merchant/stats/sold", headers=gov_headers, params=params)
+    assert government_on_merchant.status_code == 403
 
 
 def test_create_qr_code_uses_cup_count_without_exposing_amounts(context):
@@ -314,3 +336,58 @@ def test_government_views_expose_overview_store_stats_and_abnormal_events(contex
         abnormal = db.execute(text("SELECT reason, note FROM v_abnormal_events")).mappings().one()
         assert abnormal["reason"] == "polluted"
         assert abnormal["note"] == "sticky residue"
+
+
+def test_government_read_only_apis_cover_overview_stores_invoices_and_anomalies(context):
+    client, _ = context
+    tea_headers = login_headers(client, "tea_owner")
+    bento_headers = login_headers(client, "bento_owner")
+    gov_headers = government_headers(client)
+
+    qr = create_qr_batch(client, tea_headers, "GOV-001", cup_count=2)
+    client.post(
+        "/merchant/returns/scan",
+        headers=bento_headers,
+        json={"qrValue": qr["qrValue"], "condition": "normal"},
+    )
+    duplicate = client.post(
+        "/merchant/returns/scan",
+        headers=bento_headers,
+        json={"qrValue": "bad-government-token", "condition": "normal"},
+    )
+    assert duplicate.status_code == 404
+
+    params = stats_range()
+    overview = client.get("/government/overview", headers=gov_headers, params=params)
+    assert overview.status_code == 200
+    assert overview.json()["issuedCupCount"] == 2
+    assert overview.json()["returnedCupCount"] == 1
+    assert overview.json()["remainingCupCount"] == 1
+    assert overview.json()["partialReturnedInvoiceCount"] == 1
+    assert "depositTotal" not in overview.json()
+
+    stores = client.get("/government/stores", headers=gov_headers, params=params)
+    assert stores.status_code == 200
+    tea_store = next(store for store in stores.json()["stores"] if store["storeCode"] == "tea-shop")
+    bento_store = next(store for store in stores.json()["stores"] if store["storeCode"] == "bento-shop")
+    assert tea_store["issuedCupCount"] == 2
+    assert bento_store["returnedCupCount"] == 1
+    assert bento_store["crossStoreReturnedCount"] == 1
+
+    invoices = client.get("/government/invoices", headers=gov_headers, params=params)
+    assert invoices.status_code == 200
+    invoice = next(item for item in invoices.json()["invoices"] if item["invoiceCode"] == "GOV-001")
+    assert invoice["qrValue"] == "GOV-001|tea-shop"
+    assert invoice["totalCupCount"] == 2
+    assert invoice["returnedCount"] == 1
+    assert invoice["remainingCupCount"] == 1
+
+    detail = client.get(f"/government/invoices/{qr['loanId']}", headers=gov_headers)
+    assert detail.status_code == 200
+    assert detail.json()["invoiceCode"] == "GOV-001"
+    assert detail.json()["returnedStoreCode"] == "bento-shop"
+    assert len(detail.json()["scanEvents"]) == 1
+
+    anomalies = client.get("/government/anomalies", headers=gov_headers, params=params)
+    assert anomalies.status_code == 200
+    assert any(item["result"] == "invalid_qr" for item in anomalies.json()["anomalies"])

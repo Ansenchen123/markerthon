@@ -40,6 +40,16 @@ class MerchantUser(Base):
     store = relationship("Store", back_populates="users")
 
 
+class GovernmentUser(Base):
+    __tablename__ = "government_users"
+
+    id = Column(Integer, primary_key=True)
+    username = Column(String(80), nullable=False, unique=True, index=True)
+    password_hash = Column(String(255), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=now_taipei)
+
+
 class Loan(Base):
     __tablename__ = "loans"
     __table_args__ = (

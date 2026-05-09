@@ -15,6 +15,26 @@ def ensure_sqlite_compatibility() -> None:
         return
 
     inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+    with engine.begin() as conn:
+        if "government_users" not in table_names:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE government_users (
+                        id INTEGER NOT NULL,
+                        username VARCHAR(80) NOT NULL,
+                        password_hash VARCHAR(255) NOT NULL,
+                        is_active BOOLEAN NOT NULL,
+                        created_at DATETIME NOT NULL,
+                        PRIMARY KEY (id),
+                        UNIQUE (username)
+                    )
+                    """
+                )
+            )
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_government_users_username ON government_users (username)"))
+
     if not inspector.has_table("loans"):
         return
 

@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.config import settings
 from app.init_db import init_db
 from app.routers.auth import router as auth_router
+from app.routers.government import router as government_router
 from app.routers.merchant import router as merchant_router
 
 
@@ -30,3 +31,4 @@ def health() -> dict[str, str]:
 
 app.include_router(auth_router)
 app.include_router(merchant_router)
+app.include_router(government_router)

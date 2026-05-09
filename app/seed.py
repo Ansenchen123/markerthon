@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.init_db import init_db
-from app.models import MerchantUser, Store
+from app.models import GovernmentUser, MerchantUser, Store
 from app.security import hash_password
 
 
@@ -13,6 +13,9 @@ DEMO_STORES = [
     ("cafe-shop", "巷口咖啡", "cafe_owner"),
 ]
 DEMO_PASSWORD = "password123"
+DEMO_GOVERNMENT_USERS = [
+    ("gov_admin", "password123"),
+]
 
 
 def seed_demo_data(db: Session) -> None:
@@ -32,6 +35,11 @@ def seed_demo_data(db: Session) -> None:
                     password_hash=hash_password(DEMO_PASSWORD),
                 )
             )
+
+    for username, password in DEMO_GOVERNMENT_USERS:
+        user = db.scalar(select(GovernmentUser).where(GovernmentUser.username == username))
+        if user is None:
+            db.add(GovernmentUser(username=username, password_hash=hash_password(password)))
     db.commit()
 
 
@@ -42,7 +50,7 @@ def main() -> None:
         seed_demo_data(db)
     finally:
         db.close()
-    print("Seeded demo stores and merchant users.")
+    print("Seeded demo stores, merchant users, and government users.")
     print("Password for all demo users: password123")
 
 

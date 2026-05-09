@@ -22,6 +22,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
             "sub": user.username,
             "userId": user.id,
             "storeId": user.store_id,
+            "role": "merchant",
         }
     )
     return LoginResponse(

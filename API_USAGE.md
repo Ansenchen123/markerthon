@@ -29,6 +29,7 @@ Demo accounts:
 | 青山茶飲 | `tea_owner` | `password123` |
 | 晨光便當 | `bento_owner` | `password123` |
 | 巷口咖啡 | `cafe_owner` | `password123` |
+| 政府端管理 | `gov_admin` | `password123` |
 
 ## Auth
 
@@ -316,9 +317,224 @@ curl -s "http://127.0.0.1:8000/merchant/stats/recovered?from=2026-05-08T00:00:00
   -H "Authorization: Bearer $TOKEN"
 ```
 
-## 政府端 Web 直接讀取的 SQLite Views
+## 政府端 API
 
-政府端 web 第一版不走後端 API，可直接讀 SQLite views。
+政府端 API 全部使用 `/government/...`，不和商家端 `/merchant/...` 混用。政府 token 不能呼叫商家 API，商家 token 也不能呼叫政府 API。
+
+### POST `/government/auth/login`
+
+Request:
+
+```json
+{
+  "username": "gov_admin",
+  "password": "password123"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "accessToken": "<jwt>",
+  "tokenType": "bearer",
+  "user": {
+    "id": 1,
+    "username": "gov_admin"
+  }
+}
+```
+
+政府端查詢 API 都要帶：
+
+```http
+Authorization: Bearer <governmentAccessToken>
+```
+
+### GET `/government/overview`
+
+政府首頁總覽。
+
+Query params:
+
+| Name | Required | Example |
+|---|---|---|
+| `from` | yes | `2026-05-08T00:00:00` |
+| `to` | yes | `2026-05-10T23:59:59` |
+
+Response `200`:
+
+```json
+{
+  "from": "2026-05-08T00:00:00",
+  "to": "2026-05-10T23:59:59",
+  "issuedCupCount": 20,
+  "returnedCupCount": 12,
+  "remainingCupCount": 8,
+  "recoveryRate": 0.6,
+  "activeInvoiceCount": 4,
+  "returnedInvoiceCount": 3,
+  "partialReturnedInvoiceCount": 2,
+  "overdueCupCount": 1,
+  "abnormalCupCount": 1
+}
+```
+
+### GET `/government/stores`
+
+各店統計。
+
+Query params: `from`, `to`
+
+Response `200`:
+
+```json
+{
+  "from": "2026-05-08T00:00:00",
+  "to": "2026-05-10T23:59:59",
+  "stores": [
+    {
+      "storeId": 1,
+      "storeCode": "tea-shop",
+      "storeName": "青山茶飲",
+      "issuedCupCount": 10,
+      "returnedCupCount": 6,
+      "remainingCupCount": 4,
+      "crossStoreReturnedCount": 2,
+      "abnormalCupCount": 1,
+      "recoveryRate": 0.6,
+      "lastActivityAt": "2026-05-09T12:05:32.062579"
+    }
+  ]
+}
+```
+
+### GET `/government/invoices`
+
+查發票批次列表。
+
+Query params:
+
+| Name | Required | Example |
+|---|---|---|
+| `from` | yes | `2026-05-08T00:00:00` |
+| `to` | yes | `2026-05-10T23:59:59` |
+| `storeId` | no | `1` |
+| `status` | no | `active`, `partial_returned`, `returned` |
+
+Response `200`:
+
+```json
+{
+  "from": "2026-05-08T00:00:00",
+  "to": "2026-05-10T23:59:59",
+  "invoices": [
+    {
+      "loanId": 1,
+      "invoiceCode": "INV-20260509-001",
+      "qrValue": "INV-20260509-001|tea-shop",
+      "storeId": 1,
+      "storeCode": "tea-shop",
+      "storeName": "青山茶飲",
+      "status": "partial_returned",
+      "containerType": "cup",
+      "totalCupCount": 2,
+      "returnedCount": 1,
+      "remainingCupCount": 1,
+      "issuedAt": "2026-05-09T12:05:32.062579",
+      "dueAt": "2026-05-12T12:05:32.062579",
+      "returnedAt": "2026-05-09T12:08:10.000000"
+    }
+  ]
+}
+```
+
+### GET `/government/invoices/{loanId}`
+
+單張發票批次詳情，包含掃描事件。
+
+Response `200`:
+
+```json
+{
+  "loanId": 1,
+  "invoiceCode": "INV-20260509-001",
+  "qrValue": "INV-20260509-001|tea-shop",
+  "storeId": 1,
+  "storeCode": "tea-shop",
+  "storeName": "青山茶飲",
+  "status": "partial_returned",
+  "containerType": "cup",
+  "totalCupCount": 2,
+  "returnedCount": 1,
+  "remainingCupCount": 1,
+  "issuedAt": "2026-05-09T12:05:32.062579",
+  "dueAt": "2026-05-12T12:05:32.062579",
+  "returnedAt": "2026-05-09T12:08:10.000000",
+  "returnedStoreId": 2,
+  "returnedStoreCode": "bento-shop",
+  "returnedStoreName": "晨光便當",
+  "refundReason": "normal",
+  "isExpired": false,
+  "isAbnormal": false,
+  "scanEvents": [
+    {
+      "id": 1,
+      "result": "returned",
+      "reason": null,
+      "note": null,
+      "storeId": 2,
+      "storeCode": "bento-shop",
+      "storeName": "晨光便當",
+      "createdAt": "2026-05-09T12:08:10.000000"
+    }
+  ]
+}
+```
+
+### GET `/government/anomalies`
+
+異常掃描與需人工查核事件。
+
+Query params:
+
+| Name | Required | Example |
+|---|---|---|
+| `from` | yes | `2026-05-08T00:00:00` |
+| `to` | yes | `2026-05-10T23:59:59` |
+| `storeId` | no | `1` |
+| `type` | no | `invalid_qr`, `duplicate_scan`, `expired`, `damaged`, `polluted`, `other` |
+
+Response `200`:
+
+```json
+{
+  "from": "2026-05-08T00:00:00",
+  "to": "2026-05-10T23:59:59",
+  "anomalies": [
+    {
+      "eventId": 3,
+      "eventType": "return_scan",
+      "result": "invalid_qr",
+      "reason": "invalid_qr",
+      "note": null,
+      "storeId": 2,
+      "storeCode": "bento-shop",
+      "storeName": "晨光便當",
+      "loanId": null,
+      "invoiceCode": null,
+      "qrValue": null,
+      "totalCupCount": null,
+      "returnedCount": null,
+      "createdAt": "2026-05-09T12:09:00.000000"
+    }
+  ]
+}
+```
+
+## 政府端 SQLite Views
+
+政府端 web 主要走 `/government/...` API。若需要本地除錯或直接查 DB，也可讀 SQLite views。
 
 ### `v_gov_overview`
 
