@@ -4,7 +4,7 @@ FastAPI + SQLite backend for the reusable cup / meal-box deposit return demo.
 
 ## Setup
 
-From the repository root, the least ambiguous way to start the backend is:
+From the repository root, the least ambiguous way to start the full local system is:
 
 ```bash
 python3 run.py --seed
@@ -15,6 +15,9 @@ Or:
 ```bash
 ./run.py --seed
 ```
+
+This starts the backend at `http://127.0.0.1:8000` and the merchant web app at `http://127.0.0.1:5173`.
+Use `python3 run.py --backend-only --seed` when you only need the backend.
 
 Or start it manually from this `backend/` directory:
 

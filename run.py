@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""Start the backend API from the repository root."""
+"""Start the backend API and merchant web app from the repository root."""
 
 from __future__ import annotations
 
 import argparse
 import os
+import shutil
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = ROOT_DIR / "backend"
+WEBAPP_DIR = ROOT_DIR / "webapp"
 
 
 def _python_executable() -> str:
@@ -24,45 +28,191 @@ def _python_executable() -> str:
     return sys.executable
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the reusable-container backend API.")
-    parser.add_argument("--host", default="127.0.0.1", help="Host to bind. Default: 127.0.0.1")
-    parser.add_argument("--port", default="8000", help="Port to bind. Default: 8000")
-    parser.add_argument("--no-reload", action="store_true", help="Disable uvicorn auto reload.")
-    parser.add_argument("--seed", action="store_true", help="Seed demo stores and users before starting.")
-    args = parser.parse_args()
+def _npm_executable() -> str | None:
+    return shutil.which("npm")
 
-    if not (BACKEND_DIR / "app" / "main.py").exists():
-        print(f"Cannot find backend app at {BACKEND_DIR / 'app' / 'main.py'}", file=sys.stderr)
+
+def _ensure_backend_exists() -> bool:
+    app_path = BACKEND_DIR / "app" / "main.py"
+    if app_path.exists():
+        return True
+    print(f"Cannot find backend app at {app_path}", file=sys.stderr)
+    return False
+
+
+def _ensure_webapp_exists() -> bool:
+    package_path = WEBAPP_DIR / "package.json"
+    if package_path.exists():
+        return True
+    print(f"Cannot find web app package at {package_path}", file=sys.stderr)
+    return False
+
+
+def _install_webapp_dependencies(env: dict[str, str], skip_install: bool) -> int:
+    if (WEBAPP_DIR / "node_modules").exists():
+        return 0
+    if skip_install:
+        print("webapp/node_modules is missing. Run npm install in webapp/ or omit --skip-webapp-install.", file=sys.stderr)
         return 1
 
-    python = _python_executable()
-    env = os.environ.copy()
+    npm = _npm_executable()
+    if npm is None:
+        print("Cannot find npm. Install Node.js/npm before starting the web app.", file=sys.stderr)
+        return 1
 
-    if args.seed:
-        seed_result = subprocess.run([python, "-m", "app.seed"], cwd=BACKEND_DIR, env=env)
-        if seed_result.returncode != 0:
-            return seed_result.returncode
+    command = [npm, "ci"] if (WEBAPP_DIR / "package-lock.json").exists() else [npm, "install"]
+    print(f"Installing web app dependencies with {' '.join(command)}")
+    return subprocess.run(command, cwd=WEBAPP_DIR, env=env).returncode
 
+
+def _backend_command(python: str, host: str, port: str, reload: bool) -> list[str]:
     command = [
         python,
         "-m",
         "uvicorn",
         "app.main:app",
         "--host",
-        args.host,
+        host,
         "--port",
-        str(args.port),
+        str(port),
     ]
-    if not args.no_reload:
+    if reload:
         command.append("--reload")
+    return command
 
-    print(f"Starting backend at http://{args.host}:{args.port}")
-    print(f"Working directory: {BACKEND_DIR}")
+
+def _webapp_command(host: str, port: str) -> list[str]:
+    npm = _npm_executable()
+    if npm is None:
+        return []
+    command = [
+        npm,
+        "run",
+        "dev",
+        "--",
+        "--port",
+        str(port),
+    ]
+    if host != "127.0.0.1":
+        command.extend(["--host", host])
+    return command
+
+
+def _start_process(name: str, command: list[str], cwd: Path, env: dict[str, str]) -> subprocess.Popen:
+    print(f"Starting {name}: {' '.join(command)}")
+    print(f"{name} working directory: {cwd}")
+    return subprocess.Popen(command, cwd=cwd, env=env, start_new_session=True)
+
+
+def _terminate_process(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
     try:
-        return subprocess.call(command, cwd=BACKEND_DIR, env=env)
+        os.killpg(process.pid, signal.SIGTERM)
+    except (AttributeError, ProcessLookupError):
+        process.terminate()
+
+
+def _stop_processes(processes: list[tuple[str, subprocess.Popen]]) -> None:
+    for _, process in processes:
+        _terminate_process(process)
+    for name, process in processes:
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            print(f"Force stopping {name}")
+            process.kill()
+
+
+def _wait_for_processes(processes: list[tuple[str, subprocess.Popen]]) -> int:
+    try:
+        while True:
+            for name, process in processes:
+                code = process.poll()
+                if code is not None:
+                    print(f"{name} exited with status {code}")
+                    _stop_processes([(other_name, other) for other_name, other in processes if other is not process])
+                    return code
+            time.sleep(0.5)
     except KeyboardInterrupt:
+        print("Stopping services...")
+        _stop_processes(processes)
         return 130
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run the reusable-container backend and merchant web app.")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--backend-only", action="store_true", help="Start only the backend API.")
+    mode.add_argument("--webapp-only", action="store_true", help="Start only the merchant web app.")
+    parser.add_argument("--host", default="127.0.0.1", help="Backend host to bind. Default: 127.0.0.1")
+    parser.add_argument("--port", default="8000", help="Backend port to bind. Default: 8000")
+    parser.add_argument("--webapp-host", default="127.0.0.1", help="Web app host to bind. Default: 127.0.0.1")
+    parser.add_argument("--webapp-port", default="5173", help="Web app port to bind. Default: 5173")
+    parser.add_argument("--no-reload", action="store_true", help="Disable uvicorn auto reload.")
+    parser.add_argument("--seed", action="store_true", help="Seed demo stores and users before starting.")
+    parser.add_argument(
+        "--skip-webapp-install",
+        action="store_true",
+        help="Do not run npm install/npm ci when webapp/node_modules is missing.",
+    )
+    args = parser.parse_args()
+
+    start_backend = not args.webapp_only
+    start_webapp = not args.backend_only
+
+    if start_backend and not _ensure_backend_exists():
+        return 1
+    if start_webapp and not _ensure_webapp_exists():
+        return 1
+
+    python = _python_executable()
+    env = os.environ.copy()
+
+    if args.seed and start_backend:
+        seed_result = subprocess.run([python, "-m", "app.seed"], cwd=BACKEND_DIR, env=env)
+        if seed_result.returncode != 0:
+            return seed_result.returncode
+
+    if start_webapp:
+        install_result = _install_webapp_dependencies(env, args.skip_webapp_install)
+        if install_result != 0:
+            return install_result
+        if _npm_executable() is None:
+            print("Cannot find npm. Install Node.js/npm before starting the web app.", file=sys.stderr)
+            return 1
+        env.setdefault("VITE_API_BASE_URL", f"http://{args.host}:{args.port}")
+
+    processes: list[tuple[str, subprocess.Popen]] = []
+    if start_backend:
+        print(f"Backend URL: http://{args.host}:{args.port}")
+        processes.append(
+            (
+                "backend",
+                _start_process(
+                    "backend",
+                    _backend_command(python, args.host, args.port, not args.no_reload),
+                    BACKEND_DIR,
+                    env,
+                ),
+            )
+        )
+    if start_webapp:
+        print(f"Web app URL: http://{args.webapp_host}:{args.webapp_port}")
+        print(f"Web app API base: {env['VITE_API_BASE_URL']}")
+        processes.append(
+            (
+                "webapp",
+                _start_process(
+                    "webapp",
+                    _webapp_command(args.webapp_host, args.webapp_port),
+                    WEBAPP_DIR,
+                    env,
+                ),
+            )
+        )
+
+    return _wait_for_processes(processes)
 
 
 if __name__ == "__main__":
