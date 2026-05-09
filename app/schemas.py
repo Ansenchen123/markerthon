@@ -129,9 +129,9 @@ class QRCodeResponse(APIModel):
 
 
 class ReturnScanRequest(APIModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
     qr_value: str = Field(alias="qrValue", min_length=1)
-    condition: ReturnCondition = ReturnCondition.normal
-    note: Optional[str] = None
 
 
 class ReturnScanResponse(APIModel):
@@ -153,26 +153,36 @@ class ReturnScanResponse(APIModel):
     returned_at: datetime = Field(alias="returnedAt")
 
 
-class MerchantSoldStatsResponse(APIModel):
-    store_id: int = Field(alias="storeId")
-    from_at: datetime = Field(alias="from")
-    to_at: datetime = Field(alias="to")
-    container_type: Optional[ContainerType] = Field(default=None, alias="containerType")
+class MerchantSoldStatsRow(APIModel):
+    stat_date: date = Field(alias="statDate")
     total_count: int = Field(alias="totalCount")
     cup_count: int = Field(alias="cupCount")
     meal_box_count: int = Field(alias="mealBoxCount")
 
 
-class MerchantRecoveredStatsResponse(APIModel):
+class MerchantSoldStatsResponse(APIModel):
     store_id: int = Field(alias="storeId")
-    from_at: datetime = Field(alias="from")
-    to_at: datetime = Field(alias="to")
+    from_date: date = Field(alias="from")
+    to_date: date = Field(alias="to")
     container_type: Optional[ContainerType] = Field(default=None, alias="containerType")
+    rows: list[MerchantSoldStatsRow]
+
+
+class MerchantRecoveredStatsRow(APIModel):
+    stat_date: date = Field(alias="statDate")
     total_count: int = Field(alias="totalCount")
     normal_count: int = Field(alias="normalCount")
     expired_count: int = Field(alias="expiredCount")
     abnormal_count: int = Field(alias="abnormalCount")
     cross_store_count: int = Field(alias="crossStoreCount")
+
+
+class MerchantRecoveredStatsResponse(APIModel):
+    store_id: int = Field(alias="storeId")
+    from_date: date = Field(alias="from")
+    to_date: date = Field(alias="to")
+    container_type: Optional[ContainerType] = Field(default=None, alias="containerType")
+    rows: list[MerchantRecoveredStatsRow]
 
 
 class GovernmentOverviewResponse(APIModel):

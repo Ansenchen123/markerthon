@@ -120,21 +120,12 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
                     return_hour = 12 + scan_index
 
                 receiver_key = STORE_ORDER[(store_index + scan_index + 1) % len(STORE_ORDER)]
-                condition = "normal"
-                note = None
-                if day_index == 1 and store_key == "bento" and scan_index == 0:
-                    condition = "polluted"
-                    note = "demo: cup has coffee residue"
-                elif day_index == 2 and store_key == "cafe" and scan_index == 0:
-                    condition = "damaged"
-                    note = "demo: lid cracked"
-
                 with fake_merchant_time(_at(return_date, return_hour, 30)):
                     _request_json(
                         client.post(
                             "/merchant/returns/scan",
                             headers=merchant_headers[receiver_key],
-                            json={"qrValue": batch["qrValue"], "condition": condition, "note": note},
+                            json={"qrValue": batch["qrValue"]},
                         ),
                         200,
                     )
@@ -155,7 +146,7 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
             client.post(
                 "/merchant/returns/scan",
                 headers=merchant_headers["bento"],
-                json={"qrValue": duplicate_target["qrValue"], "condition": "normal"},
+                json={"qrValue": duplicate_target["qrValue"]},
             ),
             200,
         )
@@ -163,7 +154,7 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
         duplicate = client.post(
             "/merchant/returns/scan",
             headers=merchant_headers["tea"],
-            json={"qrValue": duplicate_target["qrValue"], "condition": "normal"},
+            json={"qrValue": duplicate_target["qrValue"]},
         )
     if duplicate.status_code != 409:
         raise RuntimeError(f"Expected duplicate scan status 409, got {duplicate.status_code}: {duplicate.text}")
@@ -172,7 +163,7 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
         invalid = client.post(
             "/merchant/returns/scan",
             headers=merchant_headers["tea"],
-            json={"qrValue": "DEMO-INVALID-QR", "condition": "normal"},
+            json={"qrValue": "DEMO-INVALID-QR"},
         )
     if invalid.status_code != 404:
         raise RuntimeError(f"Expected invalid QR status 404, got {invalid.status_code}: {invalid.text}")
@@ -192,8 +183,8 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
             "/merchant/stats/sold",
             headers=merchant_headers["tea"],
             params={
-                "from": datetime.combine(start_date, time.min).isoformat(),
-                "to": datetime.combine(today, time.max).isoformat(),
+                "from": start_date.isoformat(),
+                "to": today.isoformat(),
             },
         ),
         200,
@@ -205,7 +196,7 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
         "createdBatches": len(created_batches),
         "soldRows": sold["rows"],
         "recoveredRows": recovered["rows"],
-        "teaMerchantSold": merchant_sold["totalCount"],
+        "teaMerchantSold": sum(row["totalCount"] for row in merchant_sold["rows"]),
     }
 
 

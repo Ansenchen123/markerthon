@@ -198,26 +198,15 @@ DB changes:
 
 ### 2. POST `/merchant/returns/scan`
 
-店家掃描 QR 回收容器時呼叫。掃描一次代表回收 1 杯，前端不需要輸入杯數。後端會累加 `returnedCount`，直到 `remainingCupCount` 為 0 才把狀態標記為 `returned`。
+店家掃描 QR 回收容器時呼叫。掃描一次代表回收 1 杯，前端只需要送出 `qrValue`，不需要輸入杯數、容器狀態或備註。後端會自行判斷 QR 是否存在、是否重複掃描、是否逾期，並累加 `returnedCount`，直到 `remainingCupCount` 為 0 才把狀態標記為 `returned`。
 
 Request:
 
 ```json
 {
-  "qrValue": "INV-20260509-001|tea-shop|cup",
-  "condition": "normal",
-  "note": "normal return"
+  "qrValue": "INV-20260509-001|tea-shop|cup"
 }
 ```
-
-`condition`:
-
-| Value | Meaning |
-|---|---|
-| `normal` | 正常回收 |
-| `damaged` | 破損 |
-| `polluted` | 污染 |
-| `other` | 其他異常 |
 
 Response `200` for normal in-time return:
 
@@ -250,9 +239,9 @@ Response `200` for normal in-time return:
 | `partial_returned` | 已回收一部分，但 `remainingCupCount` 還大於 0 |
 | `returned` | 這張 QR 的數量已全數回收 |
 
-單次掃描是否正常、逾期或異常請看 `refundReason`、`isExpired`、`isAbnormal`。內部稽核用的單次掃描結果會寫進 `scan_events.result`，例如 `returned`、`returned_no_refund`、`duplicate_scan`、`invalid_qr`。
+單次掃描是否正常或逾期請看 `refundReason`、`isExpired`、`isAbnormal`。目前商家前端不送容器狀態，所以 `isAbnormal` 只保留給後續後端自動判定或歷史資料；內部稽核用的單次掃描結果會寫進 `scan_events.result`，例如 `returned`、`returned_no_refund`、`duplicate_scan`、`invalid_qr`。
 
-Response `200` for expired or abnormal return:
+Response `200` for expired return:
 
 ```json
 {
@@ -291,20 +280,20 @@ DB changes on accepted return:
 
 ### 3. GET `/merchant/stats/sold`
 
-查詢登入商家在時間區間內自己賣出多少循環杯/餐盒。
+查詢登入商家在日期區間內自己每天賣出多少循環杯/餐盒。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
 
 Query params:
 
 | Name | Required | Example |
 |---|---|---|
-| `from` | yes | `2026-05-08T00:00:00` |
-| `to` | yes | `2026-05-10T23:59:59` |
+| `from` | yes | `2026-05-08` |
+| `to` | yes | `2026-05-10` |
 | `containerType` | no | `cup` or `meal_box` |
 
 Example:
 
 ```http
-GET /merchant/stats/sold?from=2026-05-08T00:00:00&to=2026-05-10T23:59:59&containerType=cup
+GET /merchant/stats/sold?from=2026-05-08&to=2026-05-10&containerType=cup
 Authorization: Bearer <accessToken>
 ```
 
@@ -313,12 +302,29 @@ Response `200`:
 ```json
 {
   "storeId": 1,
-  "from": "2026-05-08T00:00:00",
-  "to": "2026-05-10T23:59:59",
+  "from": "2026-05-08",
+  "to": "2026-05-10",
   "containerType": "cup",
-  "totalCount": 1,
-  "cupCount": 1,
-  "mealBoxCount": 0
+  "rows": [
+    {
+      "statDate": "2026-05-08",
+      "totalCount": 0,
+      "cupCount": 0,
+      "mealBoxCount": 0
+    },
+    {
+      "statDate": "2026-05-09",
+      "totalCount": 1,
+      "cupCount": 1,
+      "mealBoxCount": 0
+    },
+    {
+      "statDate": "2026-05-10",
+      "totalCount": 0,
+      "cupCount": 0,
+      "mealBoxCount": 0
+    }
+  ]
 }
 ```
 
@@ -326,24 +332,24 @@ CSV read:
 
 | Source | Filter |
 |---|---|
-| `daily_report_YYYY-MM-DD.csv` | `eventType = sold`、`storeId = current_store_id`、`occurredAt` between `from` and `to` |
+| `daily_report_YYYY-MM-DD.csv` | `eventType = sold`、`storeId = current_store_id`、`occurredAt` date between `from` and `to` |
 
 ### 4. GET `/merchant/stats/recovered`
 
-查詢登入商家在時間區間內自己回收多少循環杯/餐盒。
+查詢登入商家在日期區間內自己每天回收多少循環杯/餐盒。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
 
 Query params:
 
 | Name | Required | Example |
 |---|---|---|
-| `from` | yes | `2026-05-08T00:00:00` |
-| `to` | yes | `2026-05-10T23:59:59` |
+| `from` | yes | `2026-05-08` |
+| `to` | yes | `2026-05-10` |
 | `containerType` | no | `cup` or `meal_box` |
 
 Example:
 
 ```http
-GET /merchant/stats/recovered?from=2026-05-08T00:00:00&to=2026-05-10T23:59:59
+GET /merchant/stats/recovered?from=2026-05-08&to=2026-05-10
 Authorization: Bearer <accessToken>
 ```
 
@@ -352,14 +358,35 @@ Response `200`:
 ```json
 {
   "storeId": 1,
-  "from": "2026-05-08T00:00:00",
-  "to": "2026-05-10T23:59:59",
+  "from": "2026-05-08",
+  "to": "2026-05-10",
   "containerType": null,
-  "totalCount": 1,
-  "normalCount": 1,
-  "expiredCount": 0,
-  "abnormalCount": 0,
-  "crossStoreCount": 0
+  "rows": [
+    {
+      "statDate": "2026-05-08",
+      "totalCount": 0,
+      "normalCount": 0,
+      "expiredCount": 0,
+      "abnormalCount": 0,
+      "crossStoreCount": 0
+    },
+    {
+      "statDate": "2026-05-09",
+      "totalCount": 1,
+      "normalCount": 1,
+      "expiredCount": 0,
+      "abnormalCount": 0,
+      "crossStoreCount": 1
+    },
+    {
+      "statDate": "2026-05-10",
+      "totalCount": 0,
+      "normalCount": 0,
+      "expiredCount": 0,
+      "abnormalCount": 0,
+      "crossStoreCount": 0
+    }
+  ]
 }
 ```
 
@@ -367,7 +394,7 @@ CSV read:
 
 | Source | Filter |
 |---|---|
-| `daily_report_YYYY-MM-DD.csv` | `eventType = recovered`、`storeId = current_store_id`、`occurredAt` between `from` and `to` |
+| `daily_report_YYYY-MM-DD.csv` | `eventType = recovered`、`storeId = current_store_id`、`occurredAt` date between `from` and `to` |
 
 ## cURL 全流程範例
 
@@ -386,12 +413,12 @@ QR_VALUE=$(curl -s -X POST http://127.0.0.1:8000/merchant/qr-codes \
 curl -s -X POST http://127.0.0.1:8000/merchant/returns/scan \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d "{\"qrValue\":\"$QR_VALUE\",\"condition\":\"normal\",\"note\":\"demo return\"}"
+  -d "{\"qrValue\":\"$QR_VALUE\"}"
 
-curl -s "http://127.0.0.1:8000/merchant/stats/sold?from=2026-05-08T00:00:00&to=2026-05-10T23:59:59" \
+curl -s "http://127.0.0.1:8000/merchant/stats/sold?from=2026-05-08&to=2026-05-10" \
   -H "Authorization: Bearer $TOKEN"
 
-curl -s "http://127.0.0.1:8000/merchant/stats/recovered?from=2026-05-08T00:00:00&to=2026-05-10T23:59:59" \
+curl -s "http://127.0.0.1:8000/merchant/stats/recovered?from=2026-05-08&to=2026-05-10" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -682,7 +709,7 @@ Query params:
 | `from` | yes | `2026-05-08T00:00:00` |
 | `to` | yes | `2026-05-10T23:59:59` |
 | `storeId` | no | `1` |
-| `type` | no | `invalid_qr`, `duplicate_scan`, `expired`, `damaged`, `polluted`, `other` |
+| `type` | no | `invalid_qr`, `duplicate_scan`, `expired` |
 
 Response `200`:
 
@@ -782,7 +809,7 @@ daily_report_YYYY-MM-DD.csv
 | `totalCupCount` | 該 QR/發票目前累計杯數 |
 | `returnedCount` | 該 QR/發票目前已回收杯數 |
 | `remainingCupCount` | 該 QR/發票目前未回收杯數 |
-| `condition`, `result`, `reason` | 回收狀態與原因 |
+| `condition`, `result`, `reason` | 後端判定的回收狀態與原因 |
 | `isExpired`, `isAbnormal`, `isCrossStore` | 回收統計旗標 |
 
 ## Notes

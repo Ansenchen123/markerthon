@@ -90,6 +90,14 @@ def stats_range() -> dict[str, str]:
     }
 
 
+def merchant_stats_range() -> dict[str, str]:
+    today = now_taipei().date()
+    return {
+        "from": (today - timedelta(days=1)).isoformat(),
+        "to": (today + timedelta(days=1)).isoformat(),
+    }
+
+
 def daily_stats_range() -> dict[str, str]:
     today = now_taipei().date().isoformat()
     return {"from": today, "to": today}
@@ -193,7 +201,7 @@ def test_government_login_and_role_isolation(context):
     merchant_on_government = client.get("/government/overview", headers=merchant_headers, params=params)
     assert merchant_on_government.status_code == 403
 
-    government_on_merchant = client.get("/merchant/stats/sold", headers=gov_headers, params=params)
+    government_on_merchant = client.get("/merchant/stats/sold", headers=gov_headers, params=merchant_stats_range())
     assert government_on_merchant.status_code == 403
 
 
@@ -312,7 +320,7 @@ def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
     returned = client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": qr["qrValue"], "condition": "normal"},
+        json={"qrValue": qr["qrValue"]},
     )
     assert returned.status_code == 200
     assert "refundAmount" not in returned.json()
@@ -339,13 +347,27 @@ def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
     duplicate = client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": qr["qrValue"], "condition": "normal"},
+        json={"qrValue": qr["qrValue"]},
     )
     assert duplicate.status_code == 409
 
     with SessionLocal() as db:
         duplicate_event = db.scalar(select(ScanEvent).where(ScanEvent.result == "duplicate_scan"))
         assert duplicate_event.reason == "already_returned"
+
+
+def test_return_scan_request_only_accepts_qr_value(context):
+    client, _ = context
+    headers = login_headers(client)
+    qr = create_qr(client, headers, "QR-ONLY-001")
+
+    response = client.post(
+        "/merchant/returns/scan",
+        headers=headers,
+        json={"qrValue": qr["qrValue"], "condition": "normal"},
+    )
+
+    assert response.status_code == 422
 
 
 def test_invoice_qr_returns_one_cup_per_scan(context):
@@ -357,7 +379,7 @@ def test_invoice_qr_returns_one_cup_per_scan(context):
     first_return = client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": qr["qrValue"], "condition": "normal"},
+        json={"qrValue": qr["qrValue"]},
     )
     assert first_return.status_code == 200
     assert first_return.json()["status"] == "partial_returned"
@@ -369,7 +391,7 @@ def test_invoice_qr_returns_one_cup_per_scan(context):
     second_return = client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": qr["qrValue"], "condition": "normal"},
+        json={"qrValue": qr["qrValue"]},
     )
     assert second_return.status_code == 200
     assert second_return.json()["status"] == "partial_returned"
@@ -379,7 +401,7 @@ def test_invoice_qr_returns_one_cup_per_scan(context):
     final_return = client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": qr["qrValue"], "condition": "normal"},
+        json={"qrValue": qr["qrValue"]},
     )
     assert final_return.status_code == 200
     assert final_return.json()["status"] == "returned"
@@ -402,7 +424,7 @@ def test_invalid_qr_is_rejected_and_recorded(context):
     response = client.post(
         "/merchant/returns/scan",
         headers=headers,
-        json={"qrValue": "not-a-real-token", "condition": "normal"},
+        json={"qrValue": "not-a-real-token"},
     )
     assert response.status_code == 404
 
@@ -411,7 +433,7 @@ def test_invalid_qr_is_rejected_and_recorded(context):
         assert event.reason == "invalid_qr"
 
 
-def test_expired_and_damaged_returns_are_recovered_without_refund(context):
+def test_expired_returns_are_recovered_without_refund(context):
     client, SessionLocal = context
     headers = login_headers(client)
 
@@ -424,21 +446,13 @@ def test_expired_and_damaged_returns_are_recovered_without_refund(context):
     expired_return = client.post(
         "/merchant/returns/scan",
         headers=headers,
-        json={"qrValue": expired_qr["qrValue"], "condition": "normal", "note": "late return"},
+        json={"qrValue": expired_qr["qrValue"]},
     )
     assert expired_return.status_code == 200
     assert expired_return.json()["refundReason"] == "expired"
+    assert expired_return.json()["isExpired"] is True
+    assert expired_return.json()["isAbnormal"] is False
     assert "refundAmount" not in expired_return.json()
-
-    damaged_qr = create_qr(client, headers, "DMG-001")
-    damaged_return = client.post(
-        "/merchant/returns/scan",
-        headers=headers,
-        json={"qrValue": damaged_qr["qrValue"], "condition": "damaged", "note": "cracked lid"},
-    )
-    assert damaged_return.status_code == 200
-    assert damaged_return.json()["refundReason"] == "damaged"
-    assert "refundAmount" not in damaged_return.json()
 
 
 def test_merchant_stats_are_scoped_to_current_store(context):
@@ -451,7 +465,7 @@ def test_merchant_stats_are_scoped_to_current_store(context):
     client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": tea_qr["qrValue"], "condition": "normal"},
+        json={"qrValue": tea_qr["qrValue"]},
     )
 
     with SessionLocal() as db:
@@ -461,34 +475,46 @@ def test_merchant_stats_are_scoped_to_current_store(context):
         second_loan.cup_count = 99
         db.commit()
 
-    params = stats_range()
+    params = merchant_stats_range()
+    today = now_taipei().date().isoformat()
     tea_sold = client.get("/merchant/stats/sold", headers=tea_headers, params=params)
     assert tea_sold.status_code == 200
-    assert tea_sold.json()["totalCount"] == 2
+    assert len(tea_sold.json()["rows"]) == 3
+    tea_sold_today = next(row for row in tea_sold.json()["rows"] if row["statDate"] == today)
+    assert tea_sold_today["totalCount"] == 2
     assert "depositTotal" not in tea_sold.json()
 
     bento_sold = client.get("/merchant/stats/sold", headers=bento_headers, params=params)
     assert bento_sold.status_code == 200
-    assert bento_sold.json()["totalCount"] == 0
+    assert len(bento_sold.json()["rows"]) == 3
+    assert sum(row["totalCount"] for row in bento_sold.json()["rows"]) == 0
 
     bento_recovered = client.get("/merchant/stats/recovered", headers=bento_headers, params=params)
     assert bento_recovered.status_code == 200
-    assert bento_recovered.json()["totalCount"] == 1
-    assert bento_recovered.json()["crossStoreCount"] == 1
+    assert len(bento_recovered.json()["rows"]) == 3
+    bento_recovered_today = next(row for row in bento_recovered.json()["rows"] if row["statDate"] == today)
+    assert bento_recovered_today["totalCount"] == 1
+    assert bento_recovered_today["crossStoreCount"] == 1
 
     tea_recovered = client.get("/merchant/stats/recovered", headers=tea_headers, params=params)
     assert tea_recovered.status_code == 200
-    assert tea_recovered.json()["totalCount"] == 0
+    assert len(tea_recovered.json()["rows"]) == 3
+    assert sum(row["totalCount"] for row in tea_recovered.json()["rows"]) == 0
 
 
 def test_government_views_expose_overview_store_stats_and_abnormal_events(context):
     client, SessionLocal = context
     headers = login_headers(client)
     qr = create_qr(client, headers, "VIEW-001")
+    with SessionLocal() as db:
+        loan = db.get(Loan, qr["loanId"])
+        loan.due_at = now_taipei() - timedelta(minutes=1)
+        db.commit()
+
     client.post(
         "/merchant/returns/scan",
         headers=headers,
-        json={"qrValue": qr["qrValue"], "condition": "polluted", "note": "sticky residue"},
+        json={"qrValue": qr["qrValue"]},
     )
 
     with SessionLocal() as db:
@@ -503,14 +529,14 @@ def test_government_views_expose_overview_store_stats_and_abnormal_events(contex
         assert store["abnormal_count"] == 1
 
         abnormal = db.execute(text("SELECT reason, note FROM v_abnormal_events")).mappings().one()
-        assert abnormal["reason"] == "polluted"
-        assert abnormal["note"] == "sticky residue"
+        assert abnormal["reason"] == "expired"
+        assert abnormal["note"] is None
 
     today = now_taipei().date()
     rows = read_report_rows(today, today)
     assert any(row["eventType"] == "sold" and row["storeCode"] == "tea-shop" for row in rows)
     assert any(
-        row["eventType"] == "recovered" and row["storeCode"] == "tea-shop" and row["isAbnormal"] == "true"
+        row["eventType"] == "recovered" and row["storeCode"] == "tea-shop" and row["isExpired"] == "true"
         for row in rows
     )
 
@@ -525,12 +551,12 @@ def test_government_read_only_apis_cover_overview_stores_invoices_and_anomalies(
     client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": qr["qrValue"], "condition": "normal"},
+        json={"qrValue": qr["qrValue"]},
     )
     duplicate = client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": "bad-government-token", "condition": "normal"},
+        json={"qrValue": "bad-government-token"},
     )
     assert duplicate.status_code == 404
 

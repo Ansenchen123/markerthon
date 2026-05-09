@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -6,11 +6,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.daily_reports import append_recovered_report_row, append_sold_report_row, read_report_rows
+from app.daily_reports import append_recovered_report_row, append_sold_report_row, iter_report_dates, read_report_rows
 from app.models import Loan, MerchantUser, RefundLedger, ScanEvent
 from app.schemas import (
     ContainerType,
+    MerchantRecoveredStatsRow,
     MerchantRecoveredStatsResponse,
+    MerchantSoldStatsRow,
     MerchantSoldStatsResponse,
     QRCodeCreate,
     QRCodeResponse,
@@ -19,7 +21,7 @@ from app.schemas import (
     ReturnScanResponse,
 )
 from app.security import generate_qr_value, get_current_user, hash_qr_value
-from app.time_utils import due_at_from, normalize_taipei, now_taipei
+from app.time_utils import due_at_from, now_taipei
 
 
 router = APIRouter(prefix="/merchant", tags=["merchant"])
@@ -51,12 +53,12 @@ def _merchant_report_rows(
     *,
     event_type: str,
     store_id: int,
-    from_at: datetime,
-    to_at: datetime,
+    from_date: date,
+    to_date: date,
     container_type: Optional[ContainerType],
 ) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
-    for row in read_report_rows(from_at.date(), to_at.date()):
+    for row in read_report_rows(from_date, to_date):
         if row.get("eventType") != event_type:
             continue
         if int(row.get("storeId") or 0) != store_id:
@@ -64,10 +66,74 @@ def _merchant_report_rows(
         if container_type is not None and row.get("containerType") != container_type.value:
             continue
 
-        occurred_at = datetime.fromisoformat(row["occurredAt"])
-        if from_at <= occurred_at <= to_at:
+        occurred_date = datetime.fromisoformat(row["occurredAt"]).date()
+        if from_date <= occurred_date <= to_date:
             rows.append(row)
     return rows
+
+
+def _sold_stat_rows(
+    *,
+    rows: list[dict[str, str]],
+    from_date: date,
+    to_date: date,
+) -> list[MerchantSoldStatsRow]:
+    summaries = {
+        stat_date: {"totalCount": 0, "cupCount": 0, "mealBoxCount": 0}
+        for stat_date in iter_report_dates(from_date, to_date)
+    }
+    for row in rows:
+        stat_date = datetime.fromisoformat(row["occurredAt"]).date()
+        count = _row_count(row)
+        summaries[stat_date]["totalCount"] += count
+        if row["containerType"] == ContainerType.cup.value:
+            summaries[stat_date]["cupCount"] += count
+        elif row["containerType"] == ContainerType.meal_box.value:
+            summaries[stat_date]["mealBoxCount"] += count
+
+    return [
+        MerchantSoldStatsRow(
+            statDate=stat_date,
+            totalCount=summary["totalCount"],
+            cupCount=summary["cupCount"],
+            mealBoxCount=summary["mealBoxCount"],
+        )
+        for stat_date, summary in summaries.items()
+    ]
+
+
+def _recovered_stat_rows(
+    *,
+    rows: list[dict[str, str]],
+    from_date: date,
+    to_date: date,
+) -> list[MerchantRecoveredStatsRow]:
+    summaries = {
+        stat_date: {"totalCount": 0, "normalCount": 0, "expiredCount": 0, "abnormalCount": 0, "crossStoreCount": 0}
+        for stat_date in iter_report_dates(from_date, to_date)
+    }
+    for row in rows:
+        stat_date = datetime.fromisoformat(row["occurredAt"]).date()
+        count = _row_count(row)
+        summaries[stat_date]["totalCount"] += count
+        summaries[stat_date]["normalCount"] += (
+            count if not _row_bool(row, "isExpired") and not _row_bool(row, "isAbnormal") else 0
+        )
+        summaries[stat_date]["expiredCount"] += count if _row_bool(row, "isExpired") else 0
+        summaries[stat_date]["abnormalCount"] += count if _row_bool(row, "isAbnormal") else 0
+        summaries[stat_date]["crossStoreCount"] += count if _row_bool(row, "isCrossStore") else 0
+
+    return [
+        MerchantRecoveredStatsRow(
+            statDate=stat_date,
+            totalCount=summary["totalCount"],
+            normalCount=summary["normalCount"],
+            expiredCount=summary["expiredCount"],
+            abnormalCount=summary["abnormalCount"],
+            crossStoreCount=summary["crossStoreCount"],
+        )
+        for stat_date, summary in summaries.items()
+    ]
 
 
 @router.post("/qr-codes", response_model=QRCodeResponse, status_code=status.HTTP_201_CREATED)
@@ -150,7 +216,7 @@ def scan_return(
                 store_id=current_user.store_id,
                 result="invalid_qr",
                 reason="invalid_qr",
-                note=payload.note,
+                note=None,
                 created_at=scanned_at,
             )
         )
@@ -166,25 +232,27 @@ def scan_return(
                 store_id=current_user.store_id,
                 result="duplicate_scan",
                 reason="already_returned",
-                note=payload.note,
+                note=None,
                 created_at=scanned_at,
             )
         )
         db.commit()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This QR value has already been returned")
 
+    condition = ReturnCondition.normal
+    note = None
     is_expired = scanned_at > loan.due_at
-    is_abnormal = payload.condition != ReturnCondition.normal
+    is_abnormal = False
     refund_amount = loan.deposit_amount * return_count if not is_expired and not is_abnormal else 0
-    refund_reason = _refund_reason(is_expired, payload.condition)
+    refund_reason = _refund_reason(is_expired, condition)
     scan_result = "returned" if refund_amount == loan.deposit_amount * return_count else "returned_no_refund"
 
     loan.returned_count += return_count
     loan.status = "returned" if loan.returned_count == loan.cup_count else "partial_returned"
     loan.returned_at = scanned_at
     loan.returned_store_id = current_user.store_id
-    loan.return_condition = payload.condition.value
-    loan.abnormal_note = payload.note if refund_reason != "normal" else None
+    loan.return_condition = condition.value
+    loan.abnormal_note = None
 
     refund_ledger = loan.refund_ledger
     if refund_ledger is None:
@@ -209,7 +277,7 @@ def scan_return(
             store_id=current_user.store_id,
             result=scan_result,
             reason=None if refund_reason == "normal" else refund_reason,
-            note=payload.note,
+            note=note,
             created_at=scanned_at,
         )
     )
@@ -222,13 +290,13 @@ def scan_return(
         recovered_store_code=current_user.store.code,
         recovered_store_name=current_user.store.name,
         count=return_count,
-        condition=payload.condition.value,
+        condition=condition.value,
         result=scan_result,
         reason=None if refund_reason == "normal" else refund_reason,
         is_expired=is_expired,
         is_abnormal=is_abnormal,
         is_cross_store=loan.issued_store_id != current_user.store_id,
-        note=payload.note,
+        note=note,
         occurred_at=scanned_at,
     )
 
@@ -254,57 +322,49 @@ def scan_return(
 
 @router.get("/stats/sold", response_model=MerchantSoldStatsResponse)
 def get_sold_stats(
-    from_at: datetime = Query(..., alias="from"),
-    to_at: datetime = Query(..., alias="to"),
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
     container_type: Optional[ContainerType] = Query(default=None, alias="containerType"),
     current_user: MerchantUser = Depends(get_current_user),
 ) -> MerchantSoldStatsResponse:
-    from_at = normalize_taipei(from_at)
-    to_at = normalize_taipei(to_at)
+    if from_date > to_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from must be before or equal to to")
     rows = _merchant_report_rows(
         event_type="sold",
         store_id=current_user.store_id,
-        from_at=from_at,
-        to_at=to_at,
+        from_date=from_date,
+        to_date=to_date,
         container_type=container_type,
     )
 
     return MerchantSoldStatsResponse(
         storeId=current_user.store_id,
-        **{"from": from_at, "to": to_at},
+        **{"from": from_date, "to": to_date},
         containerType=container_type.value if container_type else None,
-        totalCount=sum(_row_count(row) for row in rows),
-        cupCount=sum(_row_count(row) for row in rows if row["containerType"] == ContainerType.cup.value),
-        mealBoxCount=sum(_row_count(row) for row in rows if row["containerType"] == ContainerType.meal_box.value),
+        rows=_sold_stat_rows(rows=rows, from_date=from_date, to_date=to_date),
     )
 
 
 @router.get("/stats/recovered", response_model=MerchantRecoveredStatsResponse)
 def get_recovered_stats(
-    from_at: datetime = Query(..., alias="from"),
-    to_at: datetime = Query(..., alias="to"),
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
     container_type: Optional[ContainerType] = Query(default=None, alias="containerType"),
     current_user: MerchantUser = Depends(get_current_user),
 ) -> MerchantRecoveredStatsResponse:
-    from_at = normalize_taipei(from_at)
-    to_at = normalize_taipei(to_at)
+    if from_date > to_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from must be before or equal to to")
     rows = _merchant_report_rows(
         event_type="recovered",
         store_id=current_user.store_id,
-        from_at=from_at,
-        to_at=to_at,
+        from_date=from_date,
+        to_date=to_date,
         container_type=container_type,
     )
 
     return MerchantRecoveredStatsResponse(
         storeId=current_user.store_id,
-        **{"from": from_at, "to": to_at},
+        **{"from": from_date, "to": to_date},
         containerType=container_type.value if container_type else None,
-        totalCount=sum(_row_count(row) for row in rows),
-        normalCount=sum(
-            _row_count(row) for row in rows if not _row_bool(row, "isExpired") and not _row_bool(row, "isAbnormal")
-        ),
-        expiredCount=sum(_row_count(row) for row in rows if _row_bool(row, "isExpired")),
-        abnormalCount=sum(_row_count(row) for row in rows if _row_bool(row, "isAbnormal")),
-        crossStoreCount=sum(_row_count(row) for row in rows if _row_bool(row, "isCrossStore")),
+        rows=_recovered_stat_rows(rows=rows, from_date=from_date, to_date=to_date),
     )
