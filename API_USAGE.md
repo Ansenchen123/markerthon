@@ -19,6 +19,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python -m app.seed
+python -m app.demo_data
 uvicorn app.main:app --reload
 ```
 
@@ -31,6 +32,32 @@ Demo accounts:
 | 晨光便當 | `bento.owner@example.com` | `password123` |
 | 巷口咖啡 | `cafe.owner@example.com` | `password123` |
 | 政府端管理 | `gov.admin@example.com` | `password123` |
+
+### 產生五天 Demo CSV
+
+```bash
+python -m app.demo_data
+```
+
+這個指令會：
+
+| Step | What it does |
+|---|---|
+| 1 | 建立 demo 商家與政府帳號 |
+| 2 | 清除舊的 `DEMO-` 發票測試資料，避免重跑後數量膨脹 |
+| 3 | 用正常 API 登入、產生 QR、掃碼回收 |
+| 4 | 只把後端時間暫時改成過去五天，產生 `daily_report_YYYY-MM-DD.csv` |
+| 5 | 呼叫政府端 daily API 與商家統計 API 驗證整個流程 |
+
+預設會產生過去五天的 CSV，例如：
+
+```text
+data/daily_reports/daily_report_2026-05-05.csv
+data/daily_reports/daily_report_2026-05-06.csv
+data/daily_reports/daily_report_2026-05-07.csv
+data/daily_reports/daily_report_2026-05-08.csv
+data/daily_reports/daily_report_2026-05-09.csv
+```
 
 ## Auth
 

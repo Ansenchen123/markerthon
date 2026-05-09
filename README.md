@@ -9,11 +9,13 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python -m app.seed
+python -m app.demo_data
 uvicorn app.main:app --reload
 ```
 
 Default database path: `data/reusable_container.db`.
 Default daily CSV report path: `data/daily_reports/daily_report_YYYY-MM-DD.csv`.
+`python -m app.demo_data` creates a realistic five-day demo flow through the normal APIs and only fakes backend time so past-dated CSV files are produced.
 
 ## Demo Accounts
 
