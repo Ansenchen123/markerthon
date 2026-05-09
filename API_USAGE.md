@@ -79,6 +79,21 @@ Failure:
 
 QR 代表本次借出憑證，不代表實體容器 ID。容器本身不綁定識別碼。
 
+`qrValue` 格式：
+
+```text
+<invoiceCode>|<storeCode>|<invoiceSequence>
+```
+
+例如同一家店同一張發票有兩杯飲料，會產生：
+
+```text
+INV-20260509-001|tea-shop|1
+INV-20260509-001|tea-shop|2
+```
+
+序號 `invoiceSequence` 會在同一店家、同一張發票內遞增；換另一張發票會重新從 1 開始。
+
 Request:
 
 ```json
@@ -101,9 +116,10 @@ Response `201`:
 ```json
 {
   "loanId": 1,
-  "qrValue": "rc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "qrValue": "INV-20260509-001|tea-shop|1",
   "containerType": "cup",
   "invoiceCode": "INV-20260509-001",
+  "invoiceSequence": 1,
   "depositAmount": 20,
   "issuedAt": "2026-05-09T12:05:32.062579",
   "dueAt": "2026-05-12T12:05:32.062579"
@@ -114,7 +130,7 @@ DB changes:
 
 | Table | Change |
 |---|---|
-| `loans` | 新增一筆 `status='active'` 的借出紀錄，保存 `qr_token_hash`，不保存明文 `qrValue` |
+| `loans` | 新增一筆 `status='active'` 的借出紀錄，保存 `invoice_sequence` 與 `qr_token_hash`，不保存明文 `qrValue` |
 
 ### 2. POST `/merchant/returns/scan`
 
@@ -124,7 +140,7 @@ Request:
 
 ```json
 {
-  "qrValue": "rc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "qrValue": "INV-20260509-001|tea-shop|1",
   "condition": "normal",
   "note": "normal return"
 }
@@ -148,6 +164,7 @@ Response `200` for normal in-time return:
   "status": "returned",
   "containerType": "cup",
   "invoiceCode": "INV-20260509-001",
+  "invoiceSequence": 1,
   "issuedStoreId": 1,
   "returnedStoreId": 1,
   "depositAmount": 20,
@@ -169,6 +186,7 @@ Response `200` for expired or abnormal return:
   "status": "returned",
   "containerType": "cup",
   "invoiceCode": "INV-20260509-001",
+  "invoiceSequence": 1,
   "issuedStoreId": 1,
   "returnedStoreId": 2,
   "depositAmount": 20,
@@ -347,6 +365,7 @@ SELECT * FROM v_abnormal_events ORDER BY created_at DESC;
 ## Notes
 
 - 時間以 `Asia/Taipei` 計算 3 天歸還期限，SQLite 內存 naive datetime。
-- 明文 `qrValue` 只會回傳給前端一次；DB 只保存 SHA-256 hash。
+- `qrValue` 使用 `發票代號|商家代號|序號`；序號在同一店家同一張發票內遞增，換發票重置為 1。
+- DB 保存 `invoice_sequence` 與 SHA-256 `qr_token_hash`，不保存明文 `qrValue`。
 - 第一版不串真實金流，只保存 `refund_ledgers` 作為後端退押帳本。
 - 第一版不追蹤單一實體容器 ID。

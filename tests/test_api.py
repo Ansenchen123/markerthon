@@ -90,11 +90,34 @@ def test_create_qr_code_uses_container_deposit_amounts(context):
 
     cup = create_qr(client, headers, "cup", "CUP-001")
     assert cup["depositAmount"] == 20
-    assert cup["qrValue"].startswith("rc_")
+    assert cup["invoiceSequence"] == 1
+    assert cup["qrValue"] == "CUP-001|tea-shop|1"
 
     meal_box = create_qr(client, headers, "meal_box", "BOX-001")
     assert meal_box["depositAmount"] == 50
     assert meal_box["containerType"] == "meal_box"
+    assert meal_box["invoiceSequence"] == 1
+    assert meal_box["qrValue"] == "BOX-001|tea-shop|1"
+
+
+def test_invoice_sequence_resets_per_invoice_and_store(context):
+    client, _ = context
+    tea_headers = login_headers(client, "tea_owner")
+    bento_headers = login_headers(client, "bento_owner")
+
+    first = create_qr(client, tea_headers, "cup", "SAME-INVOICE")
+    second = create_qr(client, tea_headers, "cup", "SAME-INVOICE")
+    other_invoice = create_qr(client, tea_headers, "cup", "OTHER-INVOICE")
+    other_store = create_qr(client, bento_headers, "cup", "SAME-INVOICE")
+
+    assert first["invoiceSequence"] == 1
+    assert first["qrValue"] == "SAME-INVOICE|tea-shop|1"
+    assert second["invoiceSequence"] == 2
+    assert second["qrValue"] == "SAME-INVOICE|tea-shop|2"
+    assert other_invoice["invoiceSequence"] == 1
+    assert other_invoice["qrValue"] == "OTHER-INVOICE|tea-shop|1"
+    assert other_store["invoiceSequence"] == 1
+    assert other_store["qrValue"] == "SAME-INVOICE|bento-shop|1"
 
 
 def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):

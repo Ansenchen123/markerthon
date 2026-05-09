@@ -30,4 +30,12 @@ Default database path: `data/reusable_container.db`.
 - `GET /merchant/stats/sold`
 - `GET /merchant/stats/recovered`
 
-The QR value returned by `/merchant/qr-codes` is an opaque one-time loan credential. The frontend should render it as a QR image and attach it to the cup or meal box for that transaction.
+The QR value returned by `/merchant/qr-codes` is a one-time loan credential formatted as:
+
+```text
+<invoiceCode>|<storeCode>|<invoiceSequence>
+```
+
+Example: `INV-20260509-001|tea-shop|1`.
+
+The invoice sequence resets for each invoice within the same store. The frontend should render the returned `qrValue` as a QR image and attach it to the cup or meal box for that transaction.

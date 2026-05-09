@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -45,11 +45,19 @@ def create_qr_code(
     current_user: MerchantUser = Depends(get_current_user),
 ) -> QRCodeResponse:
     issued_at = now_taipei()
-    qr_value = generate_qr_value()
+    current_max_sequence = db.scalar(
+        select(func.coalesce(func.max(Loan.invoice_sequence), 0)).where(
+            Loan.issued_store_id == current_user.store_id,
+            Loan.invoice_code == payload.invoice_code,
+        )
+    )
+    invoice_sequence = int(current_max_sequence or 0) + 1
+    qr_value = generate_qr_value(payload.invoice_code, current_user.store.code, invoice_sequence)
     loan = Loan(
         qr_token_hash=hash_qr_value(qr_value),
         issued_store_id=current_user.store_id,
         invoice_code=payload.invoice_code,
+        invoice_sequence=invoice_sequence,
         container_type=payload.container_type.value,
         deposit_amount=DEPOSIT_AMOUNTS[payload.container_type],
         status="active",
@@ -66,6 +74,7 @@ def create_qr_code(
         qrValue=qr_value,
         containerType=loan.container_type,
         invoiceCode=loan.invoice_code,
+        invoiceSequence=loan.invoice_sequence,
         depositAmount=loan.deposit_amount,
         issuedAt=loan.issued_at,
         dueAt=loan.due_at,
@@ -152,6 +161,7 @@ def scan_return(
         status=loan.status,
         containerType=loan.container_type,
         invoiceCode=loan.invoice_code,
+        invoiceSequence=loan.invoice_sequence,
         issuedStoreId=loan.issued_store_id,
         returnedStoreId=loan.returned_store_id,
         depositAmount=loan.deposit_amount,

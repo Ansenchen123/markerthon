@@ -49,6 +49,7 @@ class QRCodeResponse(APIModel):
     qr_value: str = Field(alias="qrValue")
     container_type: ContainerType = Field(alias="containerType")
     invoice_code: str = Field(alias="invoiceCode")
+    invoice_sequence: int = Field(alias="invoiceSequence")
     deposit_amount: int = Field(alias="depositAmount")
     issued_at: datetime = Field(alias="issuedAt")
     due_at: datetime = Field(alias="dueAt")
@@ -66,6 +67,7 @@ class ReturnScanResponse(APIModel):
     status: str
     container_type: ContainerType = Field(alias="containerType")
     invoice_code: str = Field(alias="invoiceCode")
+    invoice_sequence: int = Field(alias="invoiceSequence")
     issued_store_id: int = Field(alias="issuedStoreId")
     returned_store_id: int = Field(alias="returnedStoreId")
     deposit_amount: int = Field(alias="depositAmount")

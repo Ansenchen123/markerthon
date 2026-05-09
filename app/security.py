@@ -75,8 +75,8 @@ def decode_access_token(token: str) -> dict[str, Any]:
     return payload
 
 
-def generate_qr_value() -> str:
-    return f"rc_{secrets.token_urlsafe(32)}"
+def generate_qr_value(invoice_code: str, store_code: str, invoice_sequence: int) -> str:
+    return f"{invoice_code}|{store_code}|{invoice_sequence}"
 
 
 def hash_qr_value(qr_value: str) -> str:

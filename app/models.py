@@ -44,12 +44,19 @@ class Loan(Base):
     __tablename__ = "loans"
     __table_args__ = (
         UniqueConstraint("qr_token_hash", name="uq_loans_qr_token_hash"),
+        UniqueConstraint(
+            "issued_store_id",
+            "invoice_code",
+            "invoice_sequence",
+            name="uq_loans_invoice_store_sequence",
+        ),
     )
 
     id = Column(Integer, primary_key=True)
     qr_token_hash = Column(String(64), nullable=False, index=True)
     issued_store_id = Column(Integer, ForeignKey("stores.id"), nullable=False, index=True)
     invoice_code = Column(String(80), nullable=False, index=True)
+    invoice_sequence = Column(Integer, nullable=False, default=1)
     container_type = Column(String(20), nullable=False, index=True)
     deposit_amount = Column(Integer, nullable=False)
     status = Column(String(20), nullable=False, default="active", index=True)
