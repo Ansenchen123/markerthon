@@ -8,7 +8,11 @@ From the repository root, the least ambiguous way to start the backend is:
 
 ```bash
 python3 run.py --seed
-# or
+```
+
+Or:
+
+```bash
 ./run.py --seed
 ```
 

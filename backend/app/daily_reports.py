@@ -58,18 +58,6 @@ def _format_bool(value: bool | None) -> str:
     return "true" if value else "false"
 
 
-def _parse_bool(value: str) -> bool:
-    return value.strip().lower() == "true"
-
-
-def _row_category(row: dict[str, str]) -> str:
-    return row.get("category") or ""
-
-
-def _row_count(row: dict[str, str]) -> int:
-    return int(row.get("count") or 0)
-
-
 def _remaining(loan: Loan) -> int:
     if loan.remaining_count is None:
         return max(loan.item_count - loan.returned_count, 0)
@@ -190,85 +178,6 @@ def read_report_rows(from_date: date, to_date: date) -> list[dict[str, str]]:
         with path.open(newline="", encoding="utf-8") as file:
             rows.extend(csv.DictReader(file))
     return rows
-
-
-def read_daily_sold_summary(
-    from_date: date,
-    to_date: date,
-    *,
-    store_id: int | None = None,
-    category_filter: str | None = None,
-) -> list[dict[str, object]]:
-    summaries: dict[tuple, dict[str, object]] = {}
-    for row in read_report_rows(from_date, to_date):
-        if row.get("eventType") != "sold":
-            continue
-        if store_id is not None and int(row["storeId"]) != store_id:
-            continue
-        category = _row_category(row)
-        if category_filter is not None and category != category_filter:
-            continue
-
-        stat_date = datetime.fromisoformat(row["occurredAt"]).date()
-        key = (stat_date, int(row["storeId"]), category)
-        summary = summaries.setdefault(
-            key,
-            {
-                "statDate": stat_date,
-                "storeId": int(row["storeId"]),
-                "storeCode": row["storeCode"],
-                "storeName": row["storeName"],
-                "category": category,
-                "soldCount": 0,
-            },
-        )
-        summary["soldCount"] += _row_count(row)
-
-    return [summaries[key] for key in sorted(summaries)]
-
-
-def read_daily_recovered_summary(
-    from_date: date,
-    to_date: date,
-    *,
-    store_id: int | None = None,
-    category_filter: str | None = None,
-) -> list[dict[str, object]]:
-    summaries: dict[tuple, dict[str, object]] = {}
-    for row in read_report_rows(from_date, to_date):
-        if row.get("eventType") != "recovered":
-            continue
-        if store_id is not None and int(row["storeId"]) != store_id:
-            continue
-        category = _row_category(row)
-        if category_filter is not None and category != category_filter:
-            continue
-
-        stat_date = datetime.fromisoformat(row["occurredAt"]).date()
-        key = (stat_date, int(row["storeId"]), category)
-        summary = summaries.setdefault(
-            key,
-            {
-                "statDate": stat_date,
-                "storeId": int(row["storeId"]),
-                "storeCode": row["storeCode"],
-                "storeName": row["storeName"],
-                "category": category,
-                "recoveredCount": 0,
-                "normalCount": 0,
-                "expiredCount": 0,
-                "abnormalCount": 0,
-                "crossStoreCount": 0,
-            },
-        )
-        count = _row_count(row)
-        summary["recoveredCount"] += count
-        summary["normalCount"] += count if not _parse_bool(row["isExpired"]) and not _parse_bool(row["isAbnormal"]) else 0
-        summary["expiredCount"] += count if _parse_bool(row["isExpired"]) else 0
-        summary["abnormalCount"] += count if _parse_bool(row["isAbnormal"]) else 0
-        summary["crossStoreCount"] += count if _parse_bool(row["isCrossStore"]) else 0
-
-    return [summaries[key] for key in sorted(summaries)]
 
 
 def rebuild_daily_report_csvs(db: Session) -> None:

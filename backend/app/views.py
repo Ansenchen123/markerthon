@@ -7,8 +7,6 @@ def create_sqlite_views(engine: Engine) -> None:
         conn.execute(text("DROP VIEW IF EXISTS v_gov_overview"))
         conn.execute(text("DROP VIEW IF EXISTS v_store_stats"))
         conn.execute(text("DROP VIEW IF EXISTS v_abnormal_events"))
-        conn.execute(text("DROP VIEW IF EXISTS v_daily_sold_stats"))
-        conn.execute(text("DROP VIEW IF EXISTS v_daily_recovered_stats"))
 
         conn.execute(
             text(
@@ -39,7 +37,6 @@ def create_sqlite_views(engine: Engine) -> None:
                 """
             )
         )
-
 
         conn.execute(
             text(

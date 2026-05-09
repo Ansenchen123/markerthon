@@ -12,7 +12,11 @@ web/       政府端 Web，待實作
 
 ```bash
 python3 run.py --seed
-# or
+```
+
+或：
+
+```bash
 ./run.py --seed
 ```
 

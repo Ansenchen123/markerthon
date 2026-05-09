@@ -7,7 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 import app.routers.merchant as merchant_router
-from app.daily_reports import daily_report_path, rebuild_daily_report_csvs, read_daily_recovered_summary, read_daily_sold_summary
+from app.daily_reports import daily_report_path, read_report_rows, rebuild_daily_report_csvs
 from app.database import SessionLocal
 from app.init_db import init_db
 from app.main import app
@@ -225,14 +225,15 @@ def main() -> None:
     with TestClient(app) as client:
         result = create_demo_flow(client)
 
-    sold_summary = read_daily_sold_summary(result["startDate"], result["endDate"])
-    recovered_summary = read_daily_recovered_summary(result["startDate"], result["endDate"])
+    report_rows = read_report_rows(result["startDate"], result["endDate"])
+    sold_rows = [row for row in report_rows if row.get("eventType") == "sold"]
+    recovered_rows = [row for row in report_rows if row.get("eventType") == "recovered"]
     report_paths = [daily_report_path(result["startDate"] + timedelta(days=offset)) for offset in range(5)]
 
     print(f"Generated demo flow from {result['startDate']} to {result['endDate']}.")
     print(f"Created invoice batches through API: {result['createdBatches']}")
-    print(f"Daily sold summary rows: {len(sold_summary)}")
-    print(f"Daily recovered summary rows: {len(recovered_summary)}")
+    print(f"CSV sold rows: {len(sold_rows)}")
+    print(f"CSV recovered rows: {len(recovered_rows)}")
     print(f"Government monthly issued count from API: {result['monthlyIssuedCount']}")
     print(f"Government monthly returned count from API: {result['monthlyReturnedCount']}")
     print(f"Government cup ranking rows from API: {result['topCupStoreRows']}")

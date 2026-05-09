@@ -13,9 +13,3 @@ def now_taipei() -> datetime:
 
 def due_at_from(issued_at: datetime) -> datetime:
     return issued_at + RETURN_PERIOD
-
-
-def normalize_taipei(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value
-    return value.astimezone(TAIPEI_TZ).replace(tzinfo=None)
