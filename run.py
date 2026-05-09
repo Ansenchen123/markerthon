@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Start the backend API and merchant web app from the repository root."""
+"""Start the backend API, merchant web app, and government web dashboard."""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = ROOT_DIR / "backend"
 WEBAPP_DIR = ROOT_DIR / "webapp"
+WEB_DIR = ROOT_DIR / "web"
+WEB_DIST_DIR = WEB_DIR / "dist"
 
 
 def _python_executable() -> str:
@@ -45,6 +47,14 @@ def _ensure_webapp_exists() -> bool:
     if package_path.exists():
         return True
     print(f"Cannot find web app package at {package_path}", file=sys.stderr)
+    return False
+
+
+def _ensure_web_exists() -> bool:
+    index_path = WEB_DIST_DIR / "index.html"
+    if index_path.exists():
+        return True
+    print(f"Cannot find government web build at {index_path}. Run npm run build in web/ first.", file=sys.stderr)
     return False
 
 
@@ -98,6 +108,19 @@ def _webapp_command(host: str, port: str) -> list[str]:
     return command
 
 
+def _web_command(python: str, host: str, port: str) -> list[str]:
+    return [
+        python,
+        "-m",
+        "http.server",
+        str(port),
+        "--bind",
+        host,
+        "--directory",
+        str(WEB_DIST_DIR),
+    ]
+
+
 def _start_process(name: str, command: list[str], cwd: Path, env: dict[str, str]) -> subprocess.Popen:
     print(f"Starting {name}: {' '.join(command)}")
     print(f"{name} working directory: {cwd}")
@@ -141,14 +164,19 @@ def _wait_for_processes(processes: list[tuple[str, subprocess.Popen]]) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the reusable-container backend and merchant web app.")
+    parser = argparse.ArgumentParser(
+        description="Run the reusable-container backend, merchant web app, and government web dashboard."
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--backend-only", action="store_true", help="Start only the backend API.")
     mode.add_argument("--webapp-only", action="store_true", help="Start only the merchant web app.")
+    mode.add_argument("--web-only", action="store_true", help="Start only the government web dashboard.")
     parser.add_argument("--host", default="127.0.0.1", help="Backend host to bind. Default: 127.0.0.1")
     parser.add_argument("--port", default="8000", help="Backend port to bind. Default: 8000")
     parser.add_argument("--webapp-host", default="127.0.0.1", help="Web app host to bind. Default: 127.0.0.1")
     parser.add_argument("--webapp-port", default="5173", help="Web app port to bind. Default: 5173")
+    parser.add_argument("--web-host", default="127.0.0.1", help="Government web host to bind. Default: 127.0.0.1")
+    parser.add_argument("--web-port", default="5174", help="Government web port to bind. Default: 5174")
     parser.add_argument("--no-reload", action="store_true", help="Disable uvicorn auto reload.")
     parser.add_argument("--seed", action="store_true", help="Seed demo stores and users before starting.")
     parser.add_argument(
@@ -158,12 +186,15 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    start_backend = not args.webapp_only
-    start_webapp = not args.backend_only
+    start_backend = not args.webapp_only and not args.web_only
+    start_webapp = not args.backend_only and not args.web_only
+    start_web = not args.backend_only and not args.webapp_only
 
     if start_backend and not _ensure_backend_exists():
         return 1
     if start_webapp and not _ensure_webapp_exists():
+        return 1
+    if start_web and not _ensure_web_exists():
         return 1
 
     python = _python_executable()
@@ -207,6 +238,19 @@ def main() -> int:
                     "webapp",
                     _webapp_command(args.webapp_host, args.webapp_port),
                     WEBAPP_DIR,
+                    env,
+                ),
+            )
+        )
+    if start_web:
+        print(f"Government web URL: http://{args.web_host}:{args.web_port}")
+        processes.append(
+            (
+                "web",
+                _start_process(
+                    "web",
+                    _web_command(python, args.web_host, args.web_port),
+                    ROOT_DIR,
                     env,
                 ),
             )
