@@ -60,7 +60,6 @@ class QRCodeResponse(APIModel):
 
 class ReturnScanRequest(APIModel):
     qr_value: str = Field(alias="qrValue", min_length=1)
-    cup_count: int = Field(alias="cupCount", ge=1, le=100)
     condition: ReturnCondition = ReturnCondition.normal
     note: Optional[str] = None
 

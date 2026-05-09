@@ -101,6 +101,7 @@ def scan_return(
     current_user: MerchantUser = Depends(get_current_user),
 ) -> ReturnScanResponse:
     scanned_at = now_taipei()
+    return_count = 1
     qr_hash = hash_qr_value(payload.qr_value)
     loan = db.scalar(select(Loan).where(Loan.qr_token_hash == qr_hash))
 
@@ -134,28 +135,13 @@ def scan_return(
         db.commit()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This QR value has already been returned")
 
-    if payload.cup_count > remaining_count:
-        db.add(
-            ScanEvent(
-                qr_token_hash=qr_hash,
-                loan_id=loan.id,
-                store_id=current_user.store_id,
-                result="return_count_exceeded",
-                reason="return_count_exceeded",
-                note=payload.note,
-                created_at=scanned_at,
-            )
-        )
-        db.commit()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Return cup count exceeds remaining count")
-
     is_expired = scanned_at > loan.due_at
     is_abnormal = payload.condition != ReturnCondition.normal
-    refund_amount = loan.deposit_amount * payload.cup_count if not is_expired and not is_abnormal else 0
+    refund_amount = loan.deposit_amount * return_count if not is_expired and not is_abnormal else 0
     refund_reason = _refund_reason(is_expired, payload.condition)
-    scan_result = "returned" if refund_amount == loan.deposit_amount * payload.cup_count else "returned_no_refund"
+    scan_result = "returned" if refund_amount == loan.deposit_amount * return_count else "returned_no_refund"
 
-    loan.returned_count += payload.cup_count
+    loan.returned_count += return_count
     loan.status = "returned" if loan.returned_count == loan.cup_count else "partial_returned"
     loan.returned_at = scanned_at
     loan.returned_store_id = current_user.store_id
@@ -200,7 +186,7 @@ def scan_return(
         invoiceCode=loan.invoice_code,
         issuedStoreId=loan.issued_store_id,
         returnedStoreId=loan.returned_store_id,
-        cupCount=payload.cup_count,
+        cupCount=return_count,
         totalCupCount=loan.cup_count,
         returnedCount=loan.returned_count,
         remainingCupCount=loan.cup_count - loan.returned_count,

@@ -131,14 +131,13 @@ DB changes:
 
 ### 2. POST `/merchant/returns/scan`
 
-店家掃描 QR 回收容器時呼叫。因為一張發票只有一個 QR，回收時也要傳本次回收杯數 `cupCount`。後端會累加 `returnedCount`，直到 `remainingCupCount` 為 0 才把狀態標記為 `returned`。
+店家掃描 QR 回收容器時呼叫。掃描一次代表回收 1 杯，前端不需要輸入杯數。後端會累加 `returnedCount`，直到 `remainingCupCount` 為 0 才把狀態標記為 `returned`。
 
 Request:
 
 ```json
 {
   "qrValue": "INV-20260509-001|tea-shop",
-  "cupCount": 2,
   "condition": "normal",
   "note": "normal return"
 }
@@ -164,12 +163,12 @@ Response `200` for normal in-time return:
   "invoiceCode": "INV-20260509-001",
   "issuedStoreId": 1,
   "returnedStoreId": 1,
-  "cupCount": 2,
+  "cupCount": 1,
   "totalCupCount": 2,
-  "returnedCount": 2,
-  "remainingCupCount": 0,
+  "returnedCount": 1,
+  "remainingCupCount": 1,
   "depositAmount": 20,
-  "refundAmount": 40,
+  "refundAmount": 20,
   "refundReason": "normal",
   "isExpired": false,
   "isAbnormal": false,
@@ -189,10 +188,10 @@ Response `200` for expired or abnormal return:
   "invoiceCode": "INV-20260509-001",
   "issuedStoreId": 1,
   "returnedStoreId": 2,
-  "cupCount": 2,
+  "cupCount": 1,
   "totalCupCount": 2,
-  "returnedCount": 2,
-  "remainingCupCount": 0,
+  "returnedCount": 1,
+  "remainingCupCount": 1,
   "depositAmount": 20,
   "refundAmount": 0,
   "refundReason": "expired",
@@ -209,14 +208,12 @@ Failure:
 |---:|---|---|
 | 404 | QR 不存在 | `scan_events` 新增 `result='invalid_qr'` |
 | 409 | QR 已歸還，重複掃描 | `scan_events` 新增 `result='duplicate_scan'` |
-| 400 | 本次回收杯數超過剩餘杯數 | `scan_events` 新增 `result='return_count_exceeded'` |
-
 DB changes on accepted return:
 
 | Table | Change |
 |---|---|
-| `loans` | 更新 `returned_count`；未全數回收為 `partial_returned`，全數回收為 `returned` |
-| `refund_ledgers` | 累加退押帳本；正常未逾期為 `20 * cupCount`，逾期或異常為 0 |
+| `loans` | `returned_count += 1`；未全數回收為 `partial_returned`，全數回收為 `returned` |
+| `refund_ledgers` | 累加退押帳本；正常未逾期每次掃描退 `20`，逾期或異常為 0 |
 | `scan_events` | 新增掃碼事件，供異常統計與稽核 |
 
 ### 3. GET `/merchant/stats/sold`
@@ -319,7 +316,7 @@ QR_VALUE=$(curl -s -X POST http://127.0.0.1:8000/merchant/qr-codes \
 curl -s -X POST http://127.0.0.1:8000/merchant/returns/scan \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d "{\"qrValue\":\"$QR_VALUE\",\"cupCount\":2,\"condition\":\"normal\",\"note\":\"demo return\"}"
+  -d "{\"qrValue\":\"$QR_VALUE\",\"condition\":\"normal\",\"note\":\"demo return\"}"
 
 curl -s "http://127.0.0.1:8000/merchant/stats/sold?from=2026-05-08T00:00:00&to=2026-05-10T23:59:59" \
   -H "Authorization: Bearer $TOKEN"

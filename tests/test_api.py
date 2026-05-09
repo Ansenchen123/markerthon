@@ -136,7 +136,7 @@ def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
     returned = client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": qr["qrValue"], "cupCount": 1, "condition": "normal"},
+        json={"qrValue": qr["qrValue"], "condition": "normal"},
     )
     assert returned.status_code == 200
     assert returned.json()["refundAmount"] == 20
@@ -154,7 +154,7 @@ def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
     duplicate = client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": qr["qrValue"], "cupCount": 1, "condition": "normal"},
+        json={"qrValue": qr["qrValue"], "condition": "normal"},
     )
     assert duplicate.status_code == 409
 
@@ -163,7 +163,7 @@ def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
         assert duplicate_event.reason == "already_returned"
 
 
-def test_invoice_qr_can_be_partially_returned_by_count(context):
+def test_invoice_qr_returns_one_cup_per_scan(context):
     client, SessionLocal = context
     tea_headers = login_headers(client, "tea_owner")
     bento_headers = login_headers(client, "bento_owner")
@@ -172,25 +172,30 @@ def test_invoice_qr_can_be_partially_returned_by_count(context):
     first_return = client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": qr["qrValue"], "cupCount": 2, "condition": "normal"},
+        json={"qrValue": qr["qrValue"], "condition": "normal"},
     )
     assert first_return.status_code == 200
     assert first_return.json()["status"] == "partial_returned"
-    assert first_return.json()["refundAmount"] == 40
-    assert first_return.json()["returnedCount"] == 2
-    assert first_return.json()["remainingCupCount"] == 1
+    assert first_return.json()["refundAmount"] == 20
+    assert first_return.json()["cupCount"] == 1
+    assert first_return.json()["returnedCount"] == 1
+    assert first_return.json()["remainingCupCount"] == 2
 
-    too_many = client.post(
+    second_return = client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": qr["qrValue"], "cupCount": 2, "condition": "normal"},
+        json={"qrValue": qr["qrValue"], "condition": "normal"},
     )
-    assert too_many.status_code == 400
+    assert second_return.status_code == 200
+    assert second_return.json()["status"] == "partial_returned"
+    assert second_return.json()["refundAmount"] == 20
+    assert second_return.json()["returnedCount"] == 2
+    assert second_return.json()["remainingCupCount"] == 1
 
     final_return = client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": qr["qrValue"], "cupCount": 1, "condition": "normal"},
+        json={"qrValue": qr["qrValue"], "condition": "normal"},
     )
     assert final_return.status_code == 200
     assert final_return.json()["status"] == "returned"
@@ -205,8 +210,6 @@ def test_invoice_qr_can_be_partially_returned_by_count(context):
         assert loan.status == "returned"
         ledger = db.scalar(select(RefundLedger).where(RefundLedger.loan_id == loan.id))
         assert ledger.refund_amount == 60
-        exceeded_event = db.scalar(select(ScanEvent).where(ScanEvent.result == "return_count_exceeded"))
-        assert exceeded_event.reason == "return_count_exceeded"
 
 
 def test_invalid_qr_is_rejected_and_recorded(context):
@@ -216,7 +219,7 @@ def test_invalid_qr_is_rejected_and_recorded(context):
     response = client.post(
         "/merchant/returns/scan",
         headers=headers,
-        json={"qrValue": "not-a-real-token", "cupCount": 1, "condition": "normal"},
+        json={"qrValue": "not-a-real-token", "condition": "normal"},
     )
     assert response.status_code == 404
 
@@ -238,7 +241,7 @@ def test_expired_and_damaged_returns_are_recovered_without_refund(context):
     expired_return = client.post(
         "/merchant/returns/scan",
         headers=headers,
-        json={"qrValue": expired_qr["qrValue"], "cupCount": 1, "condition": "normal", "note": "late return"},
+        json={"qrValue": expired_qr["qrValue"], "condition": "normal", "note": "late return"},
     )
     assert expired_return.status_code == 200
     assert expired_return.json()["refundAmount"] == 0
@@ -248,7 +251,7 @@ def test_expired_and_damaged_returns_are_recovered_without_refund(context):
     damaged_return = client.post(
         "/merchant/returns/scan",
         headers=headers,
-        json={"qrValue": damaged_qr["qrValue"], "cupCount": 1, "condition": "damaged", "note": "cracked lid"},
+        json={"qrValue": damaged_qr["qrValue"], "condition": "damaged", "note": "cracked lid"},
     )
     assert damaged_return.status_code == 200
     assert damaged_return.json()["refundAmount"] == 0
@@ -265,7 +268,7 @@ def test_merchant_stats_are_scoped_to_current_store(context):
     client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": tea_qr["qrValue"], "cupCount": 1, "condition": "normal"},
+        json={"qrValue": tea_qr["qrValue"], "condition": "normal"},
     )
 
     params = stats_range()
@@ -295,7 +298,7 @@ def test_government_views_expose_overview_store_stats_and_abnormal_events(contex
     client.post(
         "/merchant/returns/scan",
         headers=headers,
-        json={"qrValue": qr["qrValue"], "cupCount": 1, "condition": "polluted", "note": "sticky residue"},
+        json={"qrValue": qr["qrValue"], "condition": "polluted", "note": "sticky residue"},
     )
 
     with SessionLocal() as db:
