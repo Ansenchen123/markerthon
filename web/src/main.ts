@@ -18,7 +18,6 @@ let selectedStoreName = '青山茶飲';
 let usageTrendChart: Chart | null = null;
 let enterpriseChart: Chart | null = null;
 let regionChart: Chart | null = null;
-const governmentLogin = loginGovernment();
 
 function formatNumber(value: number | undefined) {
   return (value ?? 0).toLocaleString('zh-TW');
@@ -355,7 +354,7 @@ async function renderDashboard() {
   `;
 
   try {
-    await governmentLogin;
+    await loginGovernment();
     const data = await getDashboardData({
       year: selectedYear,
       month: selectedMonth,

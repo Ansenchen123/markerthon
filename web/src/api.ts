@@ -100,7 +100,7 @@ export type DashboardQuery = {
   storeName: string;
 };
 
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 const TOKEN_KEY = 'governmentAccessToken';
 const GOVERNMENT_LOGIN = {
   userEmail: 'gov.admin@example.com',
@@ -133,13 +133,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(await response.text().catch(() => `API error: ${response.status}`));
+    const message = await response.text().catch(() => '');
+    throw new Error(`API error ${response.status}: ${message}`);
   }
 
   return response.json() as Promise<T>;
 }
 
 export async function loginGovernment() {
+  accessToken = '';
   const data = await request<LoginResponse>('/government/auth/login', {
     method: 'POST',
     body: JSON.stringify(GOVERNMENT_LOGIN),

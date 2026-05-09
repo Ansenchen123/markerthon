@@ -4,6 +4,16 @@ type RequestOptions = Omit<RequestInit, 'body'> & {
   body?: unknown;
 };
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 async function readErrorMessage(response: Response) {
   const fallbackMessages: Record<number, string> = {
     401: 'Email or password is incorrect',
@@ -47,7 +57,7 @@ export async function apiRequest<T>(
   });
 
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
+    throw new ApiError(response.status, await readErrorMessage(response));
   }
 
   if (response.status === 204) {

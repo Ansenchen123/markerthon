@@ -7,6 +7,7 @@ import {
 import QRCode from 'qrcode';
 import globeImage from '../assets/global.png';
 import spoonImage from '../assets/spoon.png';
+import { ApiError } from './api/http';
 import {
   api,
   type GovernmentAuthResponse,
@@ -14,7 +15,7 @@ import {
   type GovernmentMonthlyUsageResponse,
   type GovernmentRegionDistributionResponse,
   type GovernmentStoreDetailResponse,
-  type GovernmentTopCupStoresResponse,
+  type GovernmentTopStoresResponse,
   type LoginResponse,
   type MerchantCategory,
   type MerchantQrCodeResponse,
@@ -78,9 +79,9 @@ type GovernmentDashboardState = {
   monthlyUsage: GovernmentMonthlyUsageResponse | null;
   enterpriseCounts: GovernmentEnterpriseCountsResponse | null;
   regionDistribution: GovernmentRegionDistributionResponse | null;
-  topCupStores: GovernmentTopCupStoresResponse | null;
+  topStores: GovernmentTopStoresResponse | null;
   storeDetail: GovernmentStoreDetailResponse | null;
-  selectedStoreId: string;
+  selectedStoreName: string;
   isLoading: boolean;
   error: string;
 };
@@ -211,7 +212,7 @@ function createDashboardStats(
   return {
     soldTotal,
     recoveredTotal,
-    activeTotal: Math.max(0, soldTotal - recoveredTotal),
+    activeTotal: sold?.remainingCount ?? Math.max(0, soldTotal - recoveredTotal),
     dailyRows: soldRows.map((soldRow) => {
       const recoveredRow = recoveredByDate.get(soldRow.statDate);
 
@@ -227,6 +228,10 @@ function createDashboardStats(
       };
     }),
   };
+}
+
+function isUnauthorizedError(error: unknown) {
+  return error instanceof ApiError && (error.status === 401 || error.status === 403);
 }
 
 export function App() {
@@ -258,9 +263,9 @@ export function App() {
     monthlyUsage: null,
     enterpriseCounts: null,
     regionDistribution: null,
-    topCupStores: null,
+    topStores: null,
     storeDetail: null,
-    selectedStoreId: '',
+    selectedStoreName: '',
     isLoading: false,
     error: '',
   });
@@ -390,6 +395,11 @@ export function App() {
         error: '',
       });
     } catch (err) {
+      if (isUnauthorizedError(err)) {
+        logout();
+        return;
+      }
+
       setStatsState((current) => ({
         ...current,
         isLoading: false,
@@ -404,44 +414,49 @@ export function App() {
     }
   }, [isLoggedIn, accessToken, store.id]);
 
-  const loadGovernmentDashboard = async (storeIdText = governmentDashboard.selectedStoreId) => {
+  const loadGovernmentDashboard = async (storeNameText = governmentDashboard.selectedStoreName) => {
     if (!governmentAccessToken) {
       return;
     }
 
     setGovernmentDashboard((current) => ({
       ...current,
-      selectedStoreId: storeIdText,
+      selectedStoreName: storeNameText,
       isLoading: true,
       error: '',
     }));
 
     try {
-      const [monthlyUsage, enterpriseCounts, regionDistribution, topCupStores] =
+      const [monthlyUsage, enterpriseCounts, regionDistribution, topStores] =
         await Promise.all([
           api.government.web.monthlyUsage(governmentAccessToken),
           api.government.web.enterpriseCounts(governmentAccessToken),
           api.government.web.regionDistribution(governmentAccessToken),
-          api.government.web.topCupStores(governmentAccessToken, { limit: 10 }),
+          api.government.web.topStores(governmentAccessToken, { limit: 10 }),
         ]);
-      const fallbackStoreId = topCupStores.rankings[0]?.storeId;
-      const selectedStoreId = Number(storeIdText || fallbackStoreId || 0);
+      const fallbackStoreName = topStores.rankings[0]?.storeName ?? '';
+      const selectedStoreName = (storeNameText || fallbackStoreName).trim();
       const storeDetail =
-        selectedStoreId > 0
-          ? await api.government.web.storeDetail(selectedStoreId, governmentAccessToken)
+        selectedStoreName
+          ? await api.government.web.storeDetail(selectedStoreName, governmentAccessToken)
           : null;
 
       setGovernmentDashboard({
         monthlyUsage,
         enterpriseCounts,
         regionDistribution,
-        topCupStores,
+        topStores,
         storeDetail,
-        selectedStoreId: selectedStoreId > 0 ? String(selectedStoreId) : storeIdText,
+        selectedStoreName,
         isLoading: false,
         error: '',
       });
     } catch (err) {
+      if (isUnauthorizedError(err)) {
+        logout();
+        return;
+      }
+
       setGovernmentDashboard((current) => ({
         ...current,
         isLoading: false,
@@ -593,11 +608,11 @@ export function App() {
         tokenType={governmentTokenType}
         user={governmentUser}
         dashboard={governmentDashboard}
-        onChangeStoreId={(value) =>
-          setGovernmentDashboard((current) => ({ ...current, selectedStoreId: value }))
+        onChangeStoreName={(value) =>
+          setGovernmentDashboard((current) => ({ ...current, selectedStoreName: value }))
         }
-        onSearchStore={() => void loadGovernmentDashboard(governmentDashboard.selectedStoreId)}
-        onRefresh={() => void loadGovernmentDashboard(governmentDashboard.selectedStoreId)}
+        onSearchStore={() => void loadGovernmentDashboard(governmentDashboard.selectedStoreName)}
+        onRefresh={() => void loadGovernmentDashboard(governmentDashboard.selectedStoreName)}
         onLogout={logout}
       />
     );
@@ -1363,7 +1378,7 @@ function SocialLogin() {
 function GovernmentDashboard({
   user,
   dashboard,
-  onChangeStoreId,
+  onChangeStoreName,
   onSearchStore,
   onRefresh,
   onLogout,
@@ -1372,7 +1387,7 @@ function GovernmentDashboard({
   tokenType: string;
   user: GovernmentAuthResponse['user'];
   dashboard: GovernmentDashboardState;
-  onChangeStoreId: (value: string) => void;
+  onChangeStoreName: (value: string) => void;
   onSearchStore: () => void;
   onRefresh: () => void;
   onLogout: () => void;
@@ -1380,7 +1395,7 @@ function GovernmentDashboard({
   const usage = dashboard.monthlyUsage;
   const enterprise = dashboard.enterpriseCounts;
   const regions = dashboard.regionDistribution?.regions ?? [];
-  const topStores = dashboard.topCupStores?.rankings ?? [];
+  const topStores = dashboard.topStores?.rankings ?? [];
   const storeDetail = dashboard.storeDetail;
   const maxDaily = Math.max(1, ...(usage?.daily ?? []).map((item) => item.issuedCount));
   const maxRegion = Math.max(1, ...regions.map((item) => item.enterpriseCount));
@@ -1499,10 +1514,10 @@ function GovernmentDashboard({
 
           <article className="gov-card gov-card-top" id="Top 10 商家">
             <div className="gov-card-title">
-              <h2>環保杯使用 Top 10 商家</h2>
-              <span>{dashboard.topCupStores?.month ?? '-'}</span>
+              <h2>循環容器使用 Top 10 商家</h2>
+              <span>{dashboard.topStores?.month ?? '-'}</span>
             </div>
-            <p className="gov-endpoint">GET /government/web/top-cup-stores</p>
+            <p className="gov-endpoint">GET /government/web/top-stores</p>
             <table className="gov-table">
               <thead>
                 <tr>
@@ -1532,13 +1547,12 @@ function GovernmentDashboard({
               <h2>特定店家查詢</h2>
               <i className="fa-solid fa-store" aria-hidden="true" />
             </div>
-            <p className="gov-endpoint">GET /government/web/stores/&lbrace;storeId&rbrace;</p>
+            <p className="gov-endpoint">GET /government/web/stores?storeName=...</p>
             <div className="gov-search">
               <input
-                inputMode="numeric"
-                placeholder="輸入 storeId"
-                value={dashboard.selectedStoreId}
-                onChange={(event) => onChangeStoreId(event.target.value)}
+                placeholder="輸入店家名稱"
+                value={dashboard.selectedStoreName}
+                onChange={(event) => onChangeStoreName(event.target.value)}
               />
               <button type="button" onClick={onSearchStore}>查詢</button>
             </div>
@@ -1570,7 +1584,7 @@ function GovernmentDashboard({
                 </div>
               </dl>
             ) : (
-              <p>輸入 storeId 後可查看特定店家狀況。</p>
+              <p>輸入店家名稱後可查看特定店家狀況。</p>
             )}
           </article>
         </div>

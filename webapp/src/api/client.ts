@@ -76,15 +76,14 @@ export type GovernmentRegionDistributionResponse = {
   }>;
 };
 
-export type GovernmentTopCupStoresParams = GovernmentMonthParams & {
+export type GovernmentTopStoresParams = GovernmentMonthParams & {
   limit?: number;
 };
 
-export type GovernmentTopCupStoresResponse = {
+export type GovernmentTopStoresResponse = {
   month: string;
   from: string;
   to: string;
-  category: 'cup';
   rankings: Array<{
     rank: number;
     storeId: number;
@@ -201,10 +200,8 @@ export type MerchantRecoveredStatsRow = MerchantSoldStatsRow & {
 
 export type MerchantSoldStatsResponse = {
   storeId: number;
-<<<<<<< HEAD
-=======
   storeName: string;
->>>>>>> 0a34802465ca3fa0186acf7243492bda113c14b8
+  remainingCount: number;
   from: string;
   to: string;
   rows: MerchantSoldStatsRow[];
@@ -212,10 +209,7 @@ export type MerchantSoldStatsResponse = {
 
 export type MerchantRecoveredStatsResponse = {
   storeId: number;
-<<<<<<< HEAD
-=======
   storeName: string;
->>>>>>> 0a34802465ca3fa0186acf7243492bda113c14b8
   from: string;
   to: string;
   rows: MerchantRecoveredStatsRow[];
@@ -248,7 +242,7 @@ function buildGovernmentMonthPath(path: string, params: GovernmentMonthParams = 
 
 function buildGovernmentTopStoresPath(
   path: string,
-  params: GovernmentTopCupStoresParams = {},
+  params: GovernmentTopStoresParams = {},
 ) {
   const search = new URLSearchParams();
 
@@ -266,6 +260,22 @@ function buildGovernmentTopStoresPath(
 
   const query = search.toString();
   return query ? `${path}?${query}` : path;
+}
+
+function buildGovernmentStoreDetailPath(storeName: string, params: GovernmentMonthParams = {}) {
+  const search = new URLSearchParams({
+    storeName,
+  });
+
+  if (params.year !== undefined) {
+    search.set('year', String(params.year));
+  }
+
+  if (params.month !== undefined) {
+    search.set('month', String(params.month));
+  }
+
+  return `/government/web/stores?${search.toString()}`;
 }
 
 export type ApiUser = {
@@ -333,18 +343,18 @@ export const api = {
             Authorization: `Bearer ${accessToken}`,
           },
         }),
-      topCupStores: (accessToken: string, params?: GovernmentTopCupStoresParams) =>
-        apiRequest<GovernmentTopCupStoresResponse>(
-          buildGovernmentTopStoresPath('/government/web/top-cup-stores', params),
+      topStores: (accessToken: string, params?: GovernmentTopStoresParams) =>
+        apiRequest<GovernmentTopStoresResponse>(
+          buildGovernmentTopStoresPath('/government/web/top-stores', params),
           {
             headers: {
               Authorization: `Bearer ${accessToken}`,
             },
           },
         ),
-      storeDetail: (storeId: number, accessToken: string, params?: GovernmentMonthParams) =>
+      storeDetail: (storeName: string, accessToken: string, params?: GovernmentMonthParams) =>
         apiRequest<GovernmentStoreDetailResponse>(
-          buildGovernmentMonthPath(`/government/web/stores/${storeId}`, params),
+          buildGovernmentStoreDetailPath(storeName, params),
           {
             headers: {
               Authorization: `Bearer ${accessToken}`,
