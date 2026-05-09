@@ -15,12 +15,12 @@ def create_sqlite_views(engine: Engine) -> None:
                 """
                 CREATE VIEW v_gov_overview AS
                 SELECT
-                    COALESCE(SUM(l.cup_count), 0) AS loans_total,
+                    COALESCE(SUM(l.item_count), 0) AS loans_total,
                     COALESCE(SUM(l.returned_count), 0) AS returned_total,
                     ROUND(
                         CASE
-                            WHEN COALESCE(SUM(l.cup_count), 0) = 0 THEN 0
-                            ELSE CAST(COALESCE(SUM(l.returned_count), 0) AS REAL) / SUM(l.cup_count)
+                            WHEN COALESCE(SUM(l.item_count), 0) = 0 THEN 0
+                            ELSE CAST(COALESCE(SUM(l.returned_count), 0) AS REAL) / SUM(l.item_count)
                         END,
                         4
                     ) AS recovery_rate,
@@ -32,7 +32,7 @@ def create_sqlite_views(engine: Engine) -> None:
                             ELSE 0
                         END
                     ), 0) AS abnormal_total,
-                    COALESCE(SUM(l.deposit_amount * l.cup_count), 0) AS deposit_total,
+                    COALESCE(SUM(l.deposit_amount * l.item_count), 0) AS deposit_total,
                     COALESCE(SUM(r.refund_amount), 0) AS refund_total
                 FROM loans l
                 LEFT JOIN refund_ledgers r ON r.loan_id = l.id
@@ -55,7 +55,7 @@ def create_sqlite_views(engine: Engine) -> None:
                     COALESCE(returned.abnormal_count, 0) AS abnormal_count
                 FROM stores s
                 LEFT JOIN (
-                    SELECT issued_store_id AS store_id, SUM(cup_count) AS issued_count
+                    SELECT issued_store_id AS store_id, SUM(item_count) AS issued_count
                     FROM loans
                     GROUP BY issued_store_id
                 ) issued ON issued.store_id = s.id

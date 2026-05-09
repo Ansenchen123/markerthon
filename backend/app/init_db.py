@@ -6,13 +6,13 @@ from app.views import create_sqlite_views
 from sqlalchemy import inspect, text
 
 
-def _qr_hash(invoice_code: str, store_code: str, container_type: str) -> str:
-    qr_value = f"{invoice_code}|{store_code}|{container_type}"
+def _qr_hash(invoice_code: str, store_code: str, category: str) -> str:
+    qr_value = f"{invoice_code}|{store_code}|{category}"
     return hashlib.sha256(qr_value.encode("utf-8")).hexdigest()
 
 
-def _legacy_qr_hash(invoice_code: str, store_code: str, container_type: str, loan_id: int) -> str:
-    qr_value = f"{invoice_code}|{store_code}|{container_type}|legacy:{loan_id}"
+def _legacy_qr_hash(invoice_code: str, store_code: str, category: str, loan_id: int) -> str:
+    qr_value = f"{invoice_code}|{store_code}|{category}|legacy:{loan_id}"
     return hashlib.sha256(qr_value.encode("utf-8")).hexdigest()
 
 
@@ -94,9 +94,14 @@ def ensure_sqlite_compatibility() -> None:
         if "invoice_sequence" not in columns:
             conn.execute(text("ALTER TABLE loans ADD COLUMN invoice_sequence INTEGER"))
             conn.execute(text("UPDATE loans SET invoice_sequence = id WHERE invoice_sequence IS NULL"))
-        if "cup_count" not in columns:
-            conn.execute(text("ALTER TABLE loans ADD COLUMN cup_count INTEGER"))
-            conn.execute(text("UPDATE loans SET cup_count = 1 WHERE cup_count IS NULL"))
+        if "item_count" not in columns:
+            if "cup_count" in columns:
+                conn.execute(text("ALTER TABLE loans RENAME COLUMN cup_count TO item_count"))
+                columns.remove("cup_count")
+                columns.add("item_count")
+            else:
+                conn.execute(text("ALTER TABLE loans ADD COLUMN item_count INTEGER"))
+                conn.execute(text("UPDATE loans SET item_count = 1 WHERE item_count IS NULL"))
         if "returned_count" not in columns:
             conn.execute(text("ALTER TABLE loans ADD COLUMN returned_count INTEGER"))
             conn.execute(

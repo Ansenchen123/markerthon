@@ -100,7 +100,7 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
         order_date = start_date + timedelta(days=day_index)
         days_ago = (today - order_date).days
         for store_index, store_key in enumerate(STORE_ORDER):
-            cup_count = sales_counts[day_index % len(sales_counts)][store_key]
+            item_count = sales_counts[day_index % len(sales_counts)][store_key]
             invoice_code = f"{DEMO_INVOICE_PREFIX}{order_date.strftime('%Y%m%d')}-{STORE_CODES[store_key].upper()}-01"
             issue_time = _at(order_date, 9 + store_index, 15)
 
@@ -109,18 +109,18 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
                     client.post(
                         "/merchant/qr-codes",
                         headers=merchant_headers[store_key],
-                        json={"invoiceCode": invoice_code, "containerType": "cup", "cupCount": cup_count},
+                        json={"invoiceCode": invoice_code, "category": "cup", "count": item_count},
                     ),
                     201,
                 )
             created_batches.append({"store": store_key, "date": order_date, "daysAgo": days_ago, **batch})
 
             if days_ago >= 3:
-                planned_returns = cup_count - 1
+                planned_returns = item_count - 1
             elif days_ago >= 1:
-                planned_returns = max(cup_count - 2, 1)
+                planned_returns = max(item_count - 2, 1)
             else:
-                planned_returns = min(cup_count, 1)
+                planned_returns = min(item_count, 1)
 
             for scan_index in range(planned_returns):
                 if days_ago >= 4 and scan_index == planned_returns - 1:
@@ -147,7 +147,7 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
             client.post(
                 "/merchant/qr-codes",
                 headers=merchant_headers["tea"],
-                json={"invoiceCode": duplicate_invoice, "containerType": "cup", "cupCount": 1},
+                json={"invoiceCode": duplicate_invoice, "category": "cup", "count": 1},
             ),
             201,
         )

@@ -142,14 +142,14 @@ Failure:
 
 ### 1. POST `/merchant/qr-codes`
 
-店家賣出循環容器時呼叫。店家輸入發票號碼、容器類型與數量，後端會依「商家 + 發票 + 容器類型」找到同一筆發票批次紀錄並累加 `cupCount`。同一張發票在同一容器類型下只會有一個 `qrValue`；前端只需要把這個 `qrValue` 生成一張 QR Code 圖。
+店家賣出循環容器時呼叫。店家輸入發票號碼、分類標籤與數量，後端會依「商家 + 發票 + 分類標籤」找到同一筆發票批次紀錄並累加 `count`。同一張發票在同一分類標籤下只會有一個 `qrValue`；前端只需要把這個 `qrValue` 生成一張 QR Code 圖。
 
 QR 代表本次借出憑證，不代表實體容器 ID。容器本身不綁定識別碼。
 
 `qrValue` 格式：
 
 ```text
-<invoiceCode>|<storeCode>|<containerType>
+<invoiceCode>|<storeCode>|<category>
 ```
 
 例如同一家店同一張發票有兩杯飲料，只會產生：
@@ -158,19 +158,19 @@ QR 代表本次借出憑證，不代表實體容器 ID。容器本身不綁定�
 INV-20260509-001|tea-shop|cup
 ```
 
-杯數差異由後端 `cupCount` / `returnedCount` / `remainingCupCount` 記錄，不在 QR 裡區分單杯。若同一張發票同時包含杯子與餐盒，因容器類型不同，會分別產生 `...|cup` 與 `...|meal_box` 兩個 QR。
+數量差異由後端 `count` / `totalCount` / `returnedCount` / `remainingCount` 記錄，不在 QR 裡區分單一容器。若同一張發票同時包含杯子與餐盒，因分類標籤不同，會分別產生 `...|cup` 與 `...|meal_box` 兩個 QR。
 
 Request:
 
 ```json
 {
   "invoiceCode": "INV-20260509-001",
-  "containerType": "cup",
-  "cupCount": 2
+  "category": "cup",
+  "count": 2
 }
 ```
 
-`containerType` 可為 `cup` 或 `meal_box`。同一店同一發票同一容器類型會累加同一筆紀錄；不同容器類型會建立不同 QR。`cupCount` 最小為 `1`，最大為 `100`。押金由後端內部帳本處理，不在商家 API 回傳。
+`category` 可為 `cup` 或 `meal_box`。同一店同一發票同一分類標籤會累加同一筆紀錄；不同分類標籤會建立不同 QR。`count` 最小為 `1`，最大為 `100`。押金由後端內部帳本處理，不在商家 API 回傳。
 
 Response `201`:
 
@@ -180,11 +180,11 @@ Response `201`:
   "qrValue": "INV-20260509-001|tea-shop|cup",
   "invoiceCode": "INV-20260509-001",
   "storeCode": "tea-shop",
-  "containerType": "cup",
-  "addedCupCount": 2,
-  "totalCupCount": 2,
+  "category": "cup",
+  "addedCount": 2,
+  "totalCount": 2,
   "returnedCount": 0,
-  "remainingCupCount": 2,
+  "remainingCount": 2,
   "issuedAt": "2026-05-09T12:05:32.062579",
   "dueAt": "2026-05-12T12:05:32.062579"
 }
@@ -194,11 +194,11 @@ DB changes:
 
 | Table | Change |
 |---|---|
-| `loans` | 同店同發票同容器類型不存在時新增一筆；已存在時更新同一筆 `cup_count += cupCount`，保存 `container_type` 與 `qr_token_hash`，不保存明文 `qrValue` |
+| `loans` | 同店同發票同分類標籤不存在時新增一筆；已存在時更新同一筆 `item_count += count`，保存分類欄位與 `qr_token_hash`，不保存明文 `qrValue` |
 
 ### 2. POST `/merchant/returns/scan`
 
-店家掃描 QR 回收容器時呼叫。掃描一次代表回收 1 杯，前端只需要送出 `qrValue`，不需要輸入杯數、容器狀態或備註。後端會自行判斷 QR 是否存在、是否重複掃描、是否逾期，並累加 `returnedCount`，直到 `remainingCupCount` 為 0 才把狀態標記為 `returned`。
+店家掃描 QR 回收容器時呼叫。掃描一次代表回收 1 個容器，前端只需要送出 `qrValue`，不需要輸入數量、容器狀態或備註。後端會自行判斷 QR 是否存在、是否重複掃描、是否逾期，並累加 `returnedCount`，直到 `remainingCount` 為 0 才把狀態標記為 `returned`。
 
 Request:
 
@@ -215,14 +215,14 @@ Response `200` for normal in-time return:
   "accepted": true,
   "loanId": 1,
   "status": "returned",
-  "containerType": "cup",
+  "category": "cup",
   "invoiceCode": "INV-20260509-001",
   "issuedStoreId": 1,
   "returnedStoreId": 1,
-  "cupCount": 1,
-  "totalCupCount": 2,
+  "count": 1,
+  "totalCount": 2,
   "returnedCount": 1,
-  "remainingCupCount": 1,
+  "remainingCount": 1,
   "refundReason": "normal",
   "isExpired": false,
   "isAbnormal": false,
@@ -236,7 +236,7 @@ Response `200` for normal in-time return:
 | Value | Meaning |
 |---|---|
 | `active` | 還沒有任何回收 |
-| `partial_returned` | 已回收一部分，但 `remainingCupCount` 還大於 0 |
+| `partial_returned` | 已回收一部分，但 `remainingCount` 還大於 0 |
 | `returned` | 這張 QR 的數量已全數回收 |
 
 單次掃描是否正常或逾期請看 `refundReason`、`isExpired`、`isAbnormal`。目前商家前端不送容器狀態，所以 `isAbnormal` 只保留給後續後端自動判定或歷史資料；內部稽核用的單次掃描結果會寫進 `scan_events.result`，例如 `returned`、`returned_no_refund`、`duplicate_scan`、`invalid_qr`。
@@ -248,14 +248,14 @@ Response `200` for expired return:
   "accepted": true,
   "loanId": 1,
   "status": "returned",
-  "containerType": "cup",
+  "category": "cup",
   "invoiceCode": "INV-20260509-001",
   "issuedStoreId": 1,
   "returnedStoreId": 2,
-  "cupCount": 1,
-  "totalCupCount": 2,
+  "count": 1,
+  "totalCount": 2,
   "returnedCount": 1,
-  "remainingCupCount": 1,
+  "remainingCount": 1,
   "refundReason": "expired",
   "isExpired": true,
   "isAbnormal": false,
@@ -280,7 +280,7 @@ DB changes on accepted return:
 
 ### 3. GET `/merchant/stats/sold`
 
-查詢指定商家在日期區間內每天賣出多少循環杯/餐盒。`storeId` 必須等於登入商家 JWT 所屬店家；若傳入其他商家會回 `403`。商家端不提供容器類型 filter；後端會一次回傳全部類型，並在每天的 row 裡列出總數、杯數與餐盒數。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
+查詢指定商家在日期區間內每天賣出多少循環容器。`storeId` 必須等於登入商家 JWT 所屬店家；若傳入其他商家會回 `403`。商家端不提供分類 filter；後端會一次回傳全部分類，並在每天的 row 裡用 `categoryCounts` 列出各分類數量。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
 
 Query params:
 
@@ -308,20 +308,44 @@ Response `200`:
     {
       "statDate": "2026-05-08",
       "totalCount": 0,
-      "cupCount": 0,
-      "mealBoxCount": 0
+      "categoryCounts": [
+        {
+          "category": "cup",
+          "count": 0
+        },
+        {
+          "category": "meal_box",
+          "count": 0
+        }
+      ]
     },
     {
       "statDate": "2026-05-09",
       "totalCount": 1,
-      "cupCount": 1,
-      "mealBoxCount": 0
+      "categoryCounts": [
+        {
+          "category": "cup",
+          "count": 1
+        },
+        {
+          "category": "meal_box",
+          "count": 0
+        }
+      ]
     },
     {
       "statDate": "2026-05-10",
       "totalCount": 0,
-      "cupCount": 0,
-      "mealBoxCount": 0
+      "categoryCounts": [
+        {
+          "category": "cup",
+          "count": 0
+        },
+        {
+          "category": "meal_box",
+          "count": 0
+        }
+      ]
     }
   ]
 }
@@ -335,7 +359,7 @@ CSV read:
 
 ### 4. GET `/merchant/stats/recovered`
 
-查詢指定商家在日期區間內每天回收多少循環杯/餐盒。`storeId` 必須等於登入商家 JWT 所屬店家；若傳入其他商家會回 `403`。商家端不提供容器類型 filter；後端會一次回傳全部類型，並在每天的 row 裡列出總數、杯數、餐盒數與回收狀態分項。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
+查詢指定商家在日期區間內每天回收多少循環容器。`storeId` 必須等於登入商家 JWT 所屬店家；若傳入其他商家會回 `403`。商家端不提供分類 filter；後端會一次回傳全部分類，並在每天的 row 裡列出總數、`categoryCounts` 與回收狀態分項。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
 
 Query params:
 
@@ -363,8 +387,16 @@ Response `200`:
     {
       "statDate": "2026-05-08",
       "totalCount": 0,
-      "cupCount": 0,
-      "mealBoxCount": 0,
+      "categoryCounts": [
+        {
+          "category": "cup",
+          "count": 0
+        },
+        {
+          "category": "meal_box",
+          "count": 0
+        }
+      ],
       "normalCount": 0,
       "expiredCount": 0,
       "abnormalCount": 0,
@@ -373,8 +405,16 @@ Response `200`:
     {
       "statDate": "2026-05-09",
       "totalCount": 1,
-      "cupCount": 1,
-      "mealBoxCount": 0,
+      "categoryCounts": [
+        {
+          "category": "cup",
+          "count": 1
+        },
+        {
+          "category": "meal_box",
+          "count": 0
+        }
+      ],
       "normalCount": 1,
       "expiredCount": 0,
       "abnormalCount": 0,
@@ -383,8 +423,16 @@ Response `200`:
     {
       "statDate": "2026-05-10",
       "totalCount": 0,
-      "cupCount": 0,
-      "mealBoxCount": 0,
+      "categoryCounts": [
+        {
+          "category": "cup",
+          "count": 0
+        },
+        {
+          "category": "meal_box",
+          "count": 0
+        }
+      ],
       "normalCount": 0,
       "expiredCount": 0,
       "abnormalCount": 0,
@@ -411,7 +459,7 @@ TOKEN=$(curl -s -X POST http://127.0.0.1:8000/auth/login \
 QR_VALUE=$(curl -s -X POST http://127.0.0.1:8000/merchant/qr-codes \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"invoiceCode":"INV-DEMO-001","containerType":"cup","cupCount":2}' \
+  -d '{"invoiceCode":"INV-DEMO-001","category":"cup","count":2}' \
   | python -c 'import json,sys; print(json.load(sys.stdin)["qrValue"])')
 
 curl -s -X POST http://127.0.0.1:8000/merchant/returns/scan \
@@ -510,15 +558,15 @@ Response `200`:
 {
   "from": "2026-05-08T00:00:00",
   "to": "2026-05-10T23:59:59",
-  "issuedCupCount": 20,
-  "returnedCupCount": 12,
-  "remainingCupCount": 8,
+  "issuedCount": 20,
+  "returnedCount": 12,
+  "remainingCount": 8,
   "recoveryRate": 0.6,
   "activeInvoiceCount": 4,
   "returnedInvoiceCount": 3,
   "partialReturnedInvoiceCount": 2,
-  "overdueCupCount": 1,
-  "abnormalCupCount": 1
+  "overdueCount": 1,
+  "abnormalCount": 1
 }
 ```
 
@@ -539,11 +587,11 @@ Response `200`:
       "storeId": 1,
       "storeCode": "tea-shop",
       "storeName": "青山茶飲",
-      "issuedCupCount": 10,
-      "returnedCupCount": 6,
-      "remainingCupCount": 4,
-      "crossStoreReturnedCount": 2,
-      "abnormalCupCount": 1,
+      "issuedCount": 10,
+      "returnedCount": 6,
+      "remainingCount": 4,
+      "crossStoreCount": 2,
+      "abnormalCount": 1,
       "recoveryRate": 0.6,
       "lastActivityAt": "2026-05-09T12:05:32.062579"
     }
@@ -553,7 +601,7 @@ Response `200`:
 
 ### GET `/government/daily/sold`
 
-每日賣出彙總，讀每日 CSV 報表檔聚合。每一天只有一個 CSV，產生 QR 或同發票追加杯數時會新增一筆 `eventType=sold` log row。
+每日賣出彙總，讀每日 CSV 報表檔聚合。每一天只有一個 CSV，產生 QR 或同發票追加數量時會新增一筆 `eventType=sold` log row。
 
 Query params:
 
@@ -562,7 +610,7 @@ Query params:
 | `from` | yes | `2026-05-09` |
 | `to` | yes | `2026-05-09` |
 | `storeId` | no | `1` |
-| `containerType` | no | `cup` |
+| `category` | no | `cup` |
 
 Response `200`:
 
@@ -576,7 +624,7 @@ Response `200`:
       "storeId": 1,
       "storeCode": "tea-shop",
       "storeName": "青山茶飲",
-      "containerType": "cup",
+      "category": "cup",
       "soldCount": 10
     }
   ]
@@ -594,7 +642,7 @@ Query params:
 | `from` | yes | `2026-05-09` |
 | `to` | yes | `2026-05-09` |
 | `storeId` | no | `2` |
-| `containerType` | no | `cup` |
+| `category` | no | `cup` |
 
 Response `200`:
 
@@ -608,7 +656,7 @@ Response `200`:
       "storeId": 2,
       "storeCode": "bento-shop",
       "storeName": "晨光便當",
-      "containerType": "cup",
+      "category": "cup",
       "recoveredCount": 6,
       "normalCount": 5,
       "expiredCount": 1,
@@ -647,10 +695,10 @@ Response `200`:
       "storeCode": "tea-shop",
       "storeName": "青山茶飲",
       "status": "partial_returned",
-      "containerType": "cup",
-      "totalCupCount": 2,
+      "category": "cup",
+      "totalCount": 2,
       "returnedCount": 1,
-      "remainingCupCount": 1,
+      "remainingCount": 1,
       "issuedAt": "2026-05-09T12:05:32.062579",
       "dueAt": "2026-05-12T12:05:32.062579",
       "returnedAt": "2026-05-09T12:08:10.000000"
@@ -674,10 +722,10 @@ Response `200`:
   "storeCode": "tea-shop",
   "storeName": "青山茶飲",
   "status": "partial_returned",
-  "containerType": "cup",
-  "totalCupCount": 2,
+  "category": "cup",
+  "totalCount": 2,
   "returnedCount": 1,
-  "remainingCupCount": 1,
+  "remainingCount": 1,
   "issuedAt": "2026-05-09T12:05:32.062579",
   "dueAt": "2026-05-12T12:05:32.062579",
   "returnedAt": "2026-05-09T12:08:10.000000",
@@ -734,7 +782,7 @@ Response `200`:
       "loanId": null,
       "invoiceCode": null,
       "qrValue": null,
-      "totalCupCount": null,
+      "totalCount": null,
       "returnedCount": null,
       "createdAt": "2026-05-09T12:09:00.000000"
     }
@@ -808,19 +856,19 @@ daily_report_YYYY-MM-DD.csv
 | `storeId`, `storeCode`, `storeName` | 本事件所屬店家；賣出為出餐店，回收為掃碼店 |
 | `issuedStore*` | 原始出餐店 |
 | `returnedStore*` | 回收店，只有回收事件有值 |
-| `containerType` | `cup` 或 `meal_box` |
-| `cupCount` | 本次事件杯數；賣出可能大於 1，回收固定為 1 |
-| `totalCupCount` | 該 QR/發票目前累計杯數 |
-| `returnedCount` | 該 QR/發票目前已回收杯數 |
-| `remainingCupCount` | 該 QR/發票目前未回收杯數 |
+| `category` | 分類標籤，例如 `cup` 或 `meal_box` |
+| `count` | 本次事件數量；賣出可能大於 1，回收固定為 1 |
+| `totalCount` | 該 QR/發票目前累計數量 |
+| `returnedCount` | 該 QR/發票目前已回收數量 |
+| `remainingCount` | 該 QR/發票目前未回收數量 |
 | `condition`, `result`, `reason` | 後端判定的回收狀態與原因 |
 | `isExpired`, `isAbnormal`, `isCrossStore` | 回收統計旗標 |
 
 ## Notes
 
 - 時間以 `Asia/Taipei` 計算 3 天歸還期限，SQLite 內存 naive datetime。
-- `qrValue` 使用 `發票代號|商家代號|容器類型`；同一店家同一張發票同一容器類型只有一個 QR。
-- DB 保存 `cup_count`、`returned_count` 與 SHA-256 `qr_token_hash`，不保存明文 `qrValue`。
-- 每日統計不再用 DB table；後端以每日 CSV append log 控制資料量，商家統計 API 與政府端 daily API 會讀 CSV 聚合。商家統計 API 不提供類型 filter，會在每日 row 中一次回傳 `cupCount` 與 `mealBoxCount`。
+- `qrValue` 使用 `發票代號|商家代號|分類標籤`；同一店家同一張發票同一分類標籤只有一個 QR。
+- DB 保存 `item_count`、`returned_count` 與 SHA-256 `qr_token_hash`，不保存明文 `qrValue`。
+- 每日統計不再用 DB table；後端以每日 CSV append log 控制資料量，商家統計 API 與政府端 daily API 會讀 CSV 聚合。商家統計 API 不提供分類 filter，會在每日 row 中回傳 `categoryCounts`。
 - 第一版不串真實金流，只保存 `refund_ledgers` 作為後端退押帳本。
 - 第一版不追蹤單一實體容器 ID。

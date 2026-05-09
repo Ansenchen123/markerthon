@@ -9,7 +9,7 @@ from app.daily_reports import read_daily_recovered_summary, read_daily_sold_summ
 from app.database import get_db
 from app.models import GovernmentUser, Loan, ScanEvent, Store
 from app.schemas import (
-    ContainerType,
+    CategoryLabel,
     GovernmentAnomaliesResponse,
     GovernmentAnomalyResponse,
     GovernmentDailyRecoveredStatsResponse,
@@ -42,7 +42,7 @@ def _rate(returned_count: int, issued_count: int) -> float:
 
 
 def _remaining(loan: Loan) -> int:
-    return max(loan.cup_count - loan.returned_count, 0)
+    return max(loan.item_count - loan.returned_count, 0)
 
 
 def _qr_value(loan: Loan) -> str:
@@ -50,7 +50,7 @@ def _qr_value(loan: Loan) -> str:
 
 
 def _is_expired(loan: Loan) -> bool:
-    return loan.returned_count < loan.cup_count and now_taipei() > loan.due_at
+    return loan.returned_count < loan.item_count and now_taipei() > loan.due_at
 
 
 def _is_abnormal(loan: Loan) -> bool:
@@ -66,10 +66,10 @@ def _invoice_summary(loan: Loan) -> GovernmentInvoiceSummary:
         storeCode=loan.issued_store.code,
         storeName=loan.issued_store.name,
         status=loan.status,
-        containerType=loan.container_type,
-        totalCupCount=loan.cup_count,
+        category=loan.container_type,
+        totalCount=loan.item_count,
         returnedCount=loan.returned_count,
-        remainingCupCount=_remaining(loan),
+        remainingCount=_remaining(loan),
         issuedAt=loan.issued_at,
         dueAt=loan.due_at,
         returnedAt=loan.returned_at,
@@ -132,22 +132,22 @@ def get_government_overview(
     to_at = normalize_taipei(to_at)
     loans = _bounded_loans(db, from_at, to_at)
 
-    issued_count = sum(loan.cup_count for loan in loans)
+    issued_count = sum(loan.item_count for loan in loans)
     returned_count = sum(loan.returned_count for loan in loans)
     abnormal_count = sum(loan.returned_count for loan in loans if _is_abnormal(loan))
     overdue_count = sum(_remaining(loan) for loan in loans if _is_expired(loan))
 
     return GovernmentOverviewResponse(
         **{"from": from_at, "to": to_at},
-        issuedCupCount=issued_count,
-        returnedCupCount=returned_count,
-        remainingCupCount=sum(_remaining(loan) for loan in loans),
+        issuedCount=issued_count,
+        returnedCount=returned_count,
+        remainingCount=sum(_remaining(loan) for loan in loans),
         recoveryRate=_rate(returned_count, issued_count),
         activeInvoiceCount=sum(1 for loan in loans if loan.status == "active"),
         partialReturnedInvoiceCount=sum(1 for loan in loans if loan.status == "partial_returned"),
         returnedInvoiceCount=sum(1 for loan in loans if loan.status == "returned"),
-        overdueCupCount=overdue_count,
-        abnormalCupCount=abnormal_count,
+        overdueCount=overdue_count,
+        abnormalCount=abnormal_count,
     )
 
 
@@ -168,7 +168,7 @@ def get_government_stores(
     for store in stores:
         issued_loans = [loan for loan in loans if loan.issued_store_id == store.id]
         returned_loans = [loan for loan in loans if loan.returned_store_id == store.id]
-        issued_count = sum(loan.cup_count for loan in issued_loans)
+        issued_count = sum(loan.item_count for loan in issued_loans)
         returned_count = sum(loan.returned_count for loan in returned_loans)
         last_values = [loan.issued_at for loan in issued_loans]
         last_values.extend(event.created_at for event in events if event.store_id == store.id)
@@ -178,13 +178,13 @@ def get_government_stores(
                 storeId=store.id,
                 storeCode=store.code,
                 storeName=store.name,
-                issuedCupCount=issued_count,
-                returnedCupCount=returned_count,
-                remainingCupCount=sum(_remaining(loan) for loan in issued_loans),
-                crossStoreReturnedCount=sum(
+                issuedCount=issued_count,
+                returnedCount=returned_count,
+                remainingCount=sum(_remaining(loan) for loan in issued_loans),
+                crossStoreCount=sum(
                     loan.returned_count for loan in returned_loans if loan.issued_store_id != loan.returned_store_id
                 ),
-                abnormalCupCount=sum(loan.returned_count for loan in returned_loans if _is_abnormal(loan)),
+                abnormalCount=sum(loan.returned_count for loan in returned_loans if _is_abnormal(loan)),
                 recoveryRate=_rate(returned_count, issued_count),
                 lastActivityAt=max(last_values) if last_values else None,
             )
@@ -296,7 +296,7 @@ def get_government_anomalies(
                 loanId=loan.id if loan else None,
                 invoiceCode=loan.invoice_code if loan else None,
                 qrValue=_qr_value(loan) if loan else None,
-                totalCupCount=loan.cup_count if loan else None,
+                totalCount=loan.item_count if loan else None,
                 returnedCount=loan.returned_count if loan else None,
                 createdAt=event.created_at,
             )
@@ -310,7 +310,7 @@ def get_government_daily_sold_stats(
     from_date: date = Query(..., alias="from"),
     to_date: date = Query(..., alias="to"),
     store_id: Optional[int] = Query(default=None, alias="storeId"),
-    container_type: Optional[ContainerType] = Query(default=None, alias="containerType"),
+    category: Optional[CategoryLabel] = Query(default=None, alias="category"),
     db: Session = Depends(get_db),
     _: GovernmentUser = Depends(get_current_government_user),
 ) -> GovernmentDailySoldStatsResponse:
@@ -318,7 +318,7 @@ def get_government_daily_sold_stats(
         from_date,
         to_date,
         store_id=store_id,
-        container_type=container_type.value if container_type is not None else None,
+        category_filter=category.value if category is not None else None,
     )
 
     return GovernmentDailySoldStatsResponse(
@@ -329,7 +329,7 @@ def get_government_daily_sold_stats(
                 storeId=row["storeId"],
                 storeCode=row["storeCode"],
                 storeName=row["storeName"],
-                containerType=row["containerType"],
+                category=row["category"],
                 soldCount=row["soldCount"],
             )
             for row in rows
@@ -342,7 +342,7 @@ def get_government_daily_recovered_stats(
     from_date: date = Query(..., alias="from"),
     to_date: date = Query(..., alias="to"),
     store_id: Optional[int] = Query(default=None, alias="storeId"),
-    container_type: Optional[ContainerType] = Query(default=None, alias="containerType"),
+    category: Optional[CategoryLabel] = Query(default=None, alias="category"),
     db: Session = Depends(get_db),
     _: GovernmentUser = Depends(get_current_government_user),
 ) -> GovernmentDailyRecoveredStatsResponse:
@@ -350,7 +350,7 @@ def get_government_daily_recovered_stats(
         from_date,
         to_date,
         store_id=store_id,
-        container_type=container_type.value if container_type is not None else None,
+        category_filter=category.value if category is not None else None,
     )
 
     return GovernmentDailyRecoveredStatsResponse(
@@ -361,7 +361,7 @@ def get_government_daily_recovered_stats(
                 storeId=row["storeId"],
                 storeCode=row["storeCode"],
                 storeName=row["storeName"],
-                containerType=row["containerType"],
+                category=row["category"],
                 recoveredCount=row["recoveredCount"],
                 normalCount=row["normalCount"],
                 expiredCount=row["expiredCount"],

@@ -29,11 +29,11 @@ REPORT_COLUMNS = [
     "returnedStoreId",
     "returnedStoreCode",
     "returnedStoreName",
-    "containerType",
-    "cupCount",
-    "totalCupCount",
+    "category",
+    "count",
+    "totalCount",
     "returnedCount",
-    "remainingCupCount",
+    "remainingCount",
     "condition",
     "result",
     "reason",
@@ -60,6 +60,14 @@ def _format_bool(value: bool | None) -> str:
 
 def _parse_bool(value: str) -> bool:
     return value.strip().lower() == "true"
+
+
+def _row_category(row: dict[str, str]) -> str:
+    return row.get("category") or ""
+
+
+def _row_count(row: dict[str, str]) -> int:
+    return int(row.get("count") or 0)
 
 
 def _append_report_row(occurred_at: datetime, row: dict[str, object]) -> None:
@@ -101,11 +109,11 @@ def append_sold_report_row(*, loan: Loan, qr_value: str, added_count: int, occur
             "issuedStoreId": loan.issued_store_id,
             "issuedStoreCode": loan.issued_store.code,
             "issuedStoreName": loan.issued_store.name,
-            "containerType": loan.container_type,
-            "cupCount": added_count,
-            "totalCupCount": loan.cup_count,
+            "category": loan.container_type,
+            "count": added_count,
+            "totalCount": loan.item_count,
             "returnedCount": loan.returned_count,
-            "remainingCupCount": loan.cup_count - loan.returned_count,
+            "remainingCount": loan.item_count - loan.returned_count,
         },
     )
 
@@ -144,11 +152,11 @@ def append_recovered_report_row(
             "returnedStoreId": recovered_store_id,
             "returnedStoreCode": recovered_store_code,
             "returnedStoreName": recovered_store_name,
-            "containerType": loan.container_type,
-            "cupCount": count,
-            "totalCupCount": loan.cup_count,
+            "category": loan.container_type,
+            "count": count,
+            "totalCount": loan.item_count,
             "returnedCount": loan.returned_count,
-            "remainingCupCount": loan.cup_count - loan.returned_count,
+            "remainingCount": loan.item_count - loan.returned_count,
             "condition": condition,
             "result": result,
             "reason": reason,
@@ -183,7 +191,7 @@ def read_daily_sold_summary(
     to_date: date,
     *,
     store_id: int | None = None,
-    container_type: str | None = None,
+    category_filter: str | None = None,
 ) -> list[dict[str, object]]:
     summaries: dict[tuple, dict[str, object]] = {}
     for row in read_report_rows(from_date, to_date):
@@ -191,11 +199,12 @@ def read_daily_sold_summary(
             continue
         if store_id is not None and int(row["storeId"]) != store_id:
             continue
-        if container_type is not None and row["containerType"] != container_type:
+        category = _row_category(row)
+        if category_filter is not None and category != category_filter:
             continue
 
         stat_date = datetime.fromisoformat(row["occurredAt"]).date()
-        key = (stat_date, int(row["storeId"]), row["containerType"])
+        key = (stat_date, int(row["storeId"]), category)
         summary = summaries.setdefault(
             key,
             {
@@ -203,11 +212,11 @@ def read_daily_sold_summary(
                 "storeId": int(row["storeId"]),
                 "storeCode": row["storeCode"],
                 "storeName": row["storeName"],
-                "containerType": row["containerType"],
+                "category": category,
                 "soldCount": 0,
             },
         )
-        summary["soldCount"] += int(row["cupCount"])
+        summary["soldCount"] += _row_count(row)
 
     return [summaries[key] for key in sorted(summaries)]
 
@@ -217,7 +226,7 @@ def read_daily_recovered_summary(
     to_date: date,
     *,
     store_id: int | None = None,
-    container_type: str | None = None,
+    category_filter: str | None = None,
 ) -> list[dict[str, object]]:
     summaries: dict[tuple, dict[str, object]] = {}
     for row in read_report_rows(from_date, to_date):
@@ -225,11 +234,12 @@ def read_daily_recovered_summary(
             continue
         if store_id is not None and int(row["storeId"]) != store_id:
             continue
-        if container_type is not None and row["containerType"] != container_type:
+        category = _row_category(row)
+        if category_filter is not None and category != category_filter:
             continue
 
         stat_date = datetime.fromisoformat(row["occurredAt"]).date()
-        key = (stat_date, int(row["storeId"]), row["containerType"])
+        key = (stat_date, int(row["storeId"]), category)
         summary = summaries.setdefault(
             key,
             {
@@ -237,7 +247,7 @@ def read_daily_recovered_summary(
                 "storeId": int(row["storeId"]),
                 "storeCode": row["storeCode"],
                 "storeName": row["storeName"],
-                "containerType": row["containerType"],
+                "category": category,
                 "recoveredCount": 0,
                 "normalCount": 0,
                 "expiredCount": 0,
@@ -245,7 +255,7 @@ def read_daily_recovered_summary(
                 "crossStoreCount": 0,
             },
         )
-        count = int(row["cupCount"])
+        count = _row_count(row)
         summary["recoveredCount"] += count
         summary["normalCount"] += count if not _parse_bool(row["isExpired"]) and not _parse_bool(row["isAbnormal"]) else 0
         summary["expiredCount"] += count if _parse_bool(row["isExpired"]) else 0
@@ -265,7 +275,7 @@ def rebuild_daily_report_csvs(db: Session) -> None:
         append_sold_report_row(
             loan=loan,
             qr_value=generate_qr_value(loan.invoice_code, loan.issued_store.code, loan.container_type),
-            added_count=loan.cup_count,
+            added_count=loan.item_count,
             occurred_at=loan.issued_at,
         )
 

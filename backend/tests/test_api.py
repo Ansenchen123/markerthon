@@ -66,20 +66,20 @@ def create_qr_batch(
     client: TestClient,
     headers: dict[str, str],
     invoice: str = "INV-001",
-    cup_count: int = 1,
-    container_type: str = "cup",
+    item_count: int = 1,
+    category: str = "cup",
 ) -> dict:
     response = client.post(
         "/merchant/qr-codes",
         headers=headers,
-        json={"invoiceCode": invoice, "containerType": container_type, "cupCount": cup_count},
+        json={"invoiceCode": invoice, "category": category, "count": item_count},
     )
     assert response.status_code == 201
     return response.json()
 
 
 def create_qr(client: TestClient, headers: dict[str, str], invoice: str = "INV-001") -> dict:
-    return create_qr_batch(client, headers, invoice=invoice, cup_count=1)
+    return create_qr_batch(client, headers, invoice=invoice, item_count=1)
 
 
 def stats_range() -> dict[str, str]:
@@ -102,6 +102,10 @@ def merchant_stats_range(store_id: int) -> dict[str, str]:
 def daily_stats_range() -> dict[str, str]:
     today = now_taipei().date().isoformat()
     return {"from": today, "to": today}
+
+
+def count_for_category(row: dict, category: str) -> int:
+    return next(item["count"] for item in row["categoryCounts"] if item["category"] == category)
 
 
 def test_login_success_and_failure(context):
@@ -163,7 +167,7 @@ def test_merchant_register_creates_store_user_and_token(context):
     qr = client.post(
         "/merchant/qr-codes",
         headers=headers,
-        json={"invoiceCode": "NEW-001", "containerType": "cup", "cupCount": 1},
+        json={"invoiceCode": "NEW-001", "category": "cup", "count": 1},
     )
     assert qr.status_code == 201
     assert qr.json()["qrValue"] == f"NEW-001|{response.json()['store']['code']}|cup"
@@ -228,25 +232,25 @@ def test_government_register_creates_user_and_token(context):
     assert duplicate.status_code == 409
 
 
-def test_create_qr_code_uses_cup_count_without_exposing_amounts(context):
+def test_create_qr_code_uses_item_count_without_exposing_amounts(context):
     client, _ = context
     headers = login_headers(client)
 
-    batch = create_qr_batch(client, headers, invoice="CUP-001", cup_count=3)
+    batch = create_qr_batch(client, headers, invoice="CUP-001", item_count=3)
 
     assert batch["invoiceCode"] == "CUP-001"
     assert batch["storeCode"] == "tea-shop"
-    assert batch["containerType"] == "cup"
-    assert batch["addedCupCount"] == 3
-    assert batch["totalCupCount"] == 3
+    assert batch["category"] == "cup"
+    assert batch["addedCount"] == 3
+    assert batch["totalCount"] == 3
     assert batch["returnedCount"] == 0
-    assert batch["remainingCupCount"] == 3
+    assert batch["remainingCount"] == 3
     assert "totalDepositAmount" not in batch
     assert "depositAmount" not in batch
     assert batch["qrValue"] == "CUP-001|tea-shop|cup"
 
 
-def test_create_qr_code_records_container_type_and_separates_types(context):
+def test_create_qr_code_records_category_and_separates_categories(context):
     client, _ = context
     headers = login_headers(client)
 
@@ -254,32 +258,32 @@ def test_create_qr_code_records_container_type_and_separates_types(context):
         client,
         headers,
         invoice="MEAL-BOX-001",
-        cup_count=2,
-        container_type="meal_box",
+        item_count=2,
+        category="meal_box",
     )
-    assert meal_box_batch["containerType"] == "meal_box"
+    assert meal_box_batch["category"] == "meal_box"
     assert meal_box_batch["qrValue"] == "MEAL-BOX-001|tea-shop|meal_box"
 
     append_same_type = create_qr_batch(
         client,
         headers,
         invoice="MEAL-BOX-001",
-        cup_count=1,
-        container_type="meal_box",
+        item_count=1,
+        category="meal_box",
     )
-    assert append_same_type["totalCupCount"] == 3
-    assert append_same_type["containerType"] == "meal_box"
+    assert append_same_type["totalCount"] == 3
+    assert append_same_type["category"] == "meal_box"
 
     cup_batch = create_qr_batch(
         client,
         headers,
         invoice="MEAL-BOX-001",
-        cup_count=1,
-        container_type="cup",
+        item_count=1,
+        category="cup",
     )
-    assert cup_batch["containerType"] == "cup"
+    assert cup_batch["category"] == "cup"
     assert cup_batch["loanId"] != meal_box_batch["loanId"]
-    assert cup_batch["totalCupCount"] == 1
+    assert cup_batch["totalCount"] == 1
     assert cup_batch["qrValue"] == "MEAL-BOX-001|tea-shop|cup"
 
 
@@ -288,28 +292,28 @@ def test_invoice_qr_is_reused_and_count_accumulates_per_store(context):
     tea_headers = login_headers(client, "tea.owner@example.com")
     bento_headers = login_headers(client, "bento.owner@example.com")
 
-    first_batch = create_qr_batch(client, tea_headers, invoice="SAME-INVOICE", cup_count=3)
-    second_batch = create_qr_batch(client, tea_headers, invoice="SAME-INVOICE", cup_count=2)
-    other_invoice = create_qr_batch(client, tea_headers, invoice="OTHER-INVOICE", cup_count=1)
-    other_store = create_qr_batch(client, bento_headers, invoice="SAME-INVOICE", cup_count=1)
+    first_batch = create_qr_batch(client, tea_headers, invoice="SAME-INVOICE", item_count=3)
+    second_batch = create_qr_batch(client, tea_headers, invoice="SAME-INVOICE", item_count=2)
+    other_invoice = create_qr_batch(client, tea_headers, invoice="OTHER-INVOICE", item_count=1)
+    other_store = create_qr_batch(client, bento_headers, invoice="SAME-INVOICE", item_count=1)
 
     assert first_batch["qrValue"] == "SAME-INVOICE|tea-shop|cup"
-    assert first_batch["addedCupCount"] == 3
-    assert first_batch["totalCupCount"] == 3
+    assert first_batch["addedCount"] == 3
+    assert first_batch["totalCount"] == 3
     assert second_batch["qrValue"] == "SAME-INVOICE|tea-shop|cup"
-    assert second_batch["addedCupCount"] == 2
-    assert second_batch["totalCupCount"] == 5
-    assert other_invoice["totalCupCount"] == 1
+    assert second_batch["addedCount"] == 2
+    assert second_batch["totalCount"] == 5
+    assert other_invoice["totalCount"] == 1
     assert other_invoice["qrValue"] == "OTHER-INVOICE|tea-shop|cup"
-    assert other_store["totalCupCount"] == 1
+    assert other_store["totalCount"] == 1
     assert other_store["qrValue"] == "SAME-INVOICE|bento-shop|cup"
 
     today = now_taipei().date()
     rows = read_report_rows(today, today)
     sold_rows = [row for row in rows if row["eventType"] == "sold"]
     assert daily_report_path(today).exists()
-    assert sum(int(row["cupCount"]) for row in sold_rows if row["storeCode"] == "tea-shop") == 6
-    assert sum(int(row["cupCount"]) for row in sold_rows if row["storeCode"] == "bento-shop") == 1
+    assert sum(int(row["count"]) for row in sold_rows if row["storeCode"] == "tea-shop") == 6
+    assert sum(int(row["count"]) for row in sold_rows if row["storeCode"] == "bento-shop") == 1
 
 
 def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
@@ -371,11 +375,11 @@ def test_return_scan_request_only_accepts_qr_value(context):
     assert response.status_code == 422
 
 
-def test_invoice_qr_returns_one_cup_per_scan(context):
+def test_invoice_qr_returns_one_container_per_scan(context):
     client, SessionLocal = context
     tea_headers = login_headers(client, "tea.owner@example.com")
     bento_headers = login_headers(client, "bento.owner@example.com")
-    qr = create_qr_batch(client, tea_headers, "PARTIAL-001", cup_count=3)
+    qr = create_qr_batch(client, tea_headers, "PARTIAL-001", item_count=3)
 
     first_return = client.post(
         "/merchant/returns/scan",
@@ -385,9 +389,9 @@ def test_invoice_qr_returns_one_cup_per_scan(context):
     assert first_return.status_code == 200
     assert first_return.json()["status"] == "partial_returned"
     assert "refundAmount" not in first_return.json()
-    assert first_return.json()["cupCount"] == 1
+    assert first_return.json()["count"] == 1
     assert first_return.json()["returnedCount"] == 1
-    assert first_return.json()["remainingCupCount"] == 2
+    assert first_return.json()["remainingCount"] == 2
 
     second_return = client.post(
         "/merchant/returns/scan",
@@ -397,7 +401,7 @@ def test_invoice_qr_returns_one_cup_per_scan(context):
     assert second_return.status_code == 200
     assert second_return.json()["status"] == "partial_returned"
     assert second_return.json()["returnedCount"] == 2
-    assert second_return.json()["remainingCupCount"] == 1
+    assert second_return.json()["remainingCount"] == 1
 
     final_return = client.post(
         "/merchant/returns/scan",
@@ -407,11 +411,11 @@ def test_invoice_qr_returns_one_cup_per_scan(context):
     assert final_return.status_code == 200
     assert final_return.json()["status"] == "returned"
     assert final_return.json()["returnedCount"] == 3
-    assert final_return.json()["remainingCupCount"] == 0
+    assert final_return.json()["remainingCount"] == 0
 
     with SessionLocal() as db:
         loan = db.get(Loan, qr["loanId"])
-        assert loan.cup_count == 3
+        assert loan.item_count == 3
         assert loan.returned_count == 3
         assert loan.status == "returned"
         ledger = db.scalar(select(RefundLedger).where(RefundLedger.loan_id == loan.id))
@@ -467,8 +471,8 @@ def test_merchant_stats_are_scoped_to_current_store(context):
         client,
         tea_headers,
         invoice="STAT-MEAL-001",
-        cup_count=2,
-        container_type="meal_box",
+        item_count=2,
+        category="meal_box",
     )
     client.post(
         "/merchant/returns/scan",
@@ -488,8 +492,8 @@ def test_merchant_stats_are_scoped_to_current_store(context):
         tea_store_id = db.scalar(select(Store.id).where(Store.code == "tea-shop"))
         bento_store_id = db.scalar(select(Store.id).where(Store.code == "bento-shop"))
         first_loan.returned_count = 42
-        second_loan.cup_count = 99
-        meal_box_loan.cup_count = 88
+        second_loan.item_count = 99
+        meal_box_loan.item_count = 88
         db.commit()
 
     tea_params = merchant_stats_range(tea_store_id)
@@ -499,11 +503,11 @@ def test_merchant_stats_are_scoped_to_current_store(context):
     assert tea_sold.status_code == 200
     assert tea_sold.json()["storeId"] == tea_store_id
     assert len(tea_sold.json()["rows"]) == 3
-    assert "containerType" not in tea_sold.json()
+    assert "category" not in tea_sold.json()
     tea_sold_today = next(row for row in tea_sold.json()["rows"] if row["statDate"] == today)
     assert tea_sold_today["totalCount"] == 4
-    assert tea_sold_today["cupCount"] == 2
-    assert tea_sold_today["mealBoxCount"] == 2
+    assert count_for_category(tea_sold_today, "cup") == 2
+    assert count_for_category(tea_sold_today, "meal_box") == 2
     assert "depositTotal" not in tea_sold.json()
 
     wrong_store = client.get("/merchant/stats/sold", headers=tea_headers, params=bento_params)
@@ -518,11 +522,11 @@ def test_merchant_stats_are_scoped_to_current_store(context):
     assert bento_recovered.status_code == 200
     assert bento_recovered.json()["storeId"] == bento_store_id
     assert len(bento_recovered.json()["rows"]) == 3
-    assert "containerType" not in bento_recovered.json()
+    assert "category" not in bento_recovered.json()
     bento_recovered_today = next(row for row in bento_recovered.json()["rows"] if row["statDate"] == today)
     assert bento_recovered_today["totalCount"] == 2
-    assert bento_recovered_today["cupCount"] == 1
-    assert bento_recovered_today["mealBoxCount"] == 1
+    assert count_for_category(bento_recovered_today, "cup") == 1
+    assert count_for_category(bento_recovered_today, "meal_box") == 1
     assert bento_recovered_today["crossStoreCount"] == 2
 
     tea_recovered = client.get("/merchant/stats/recovered", headers=tea_headers, params=tea_params)
@@ -576,7 +580,7 @@ def test_government_read_only_apis_cover_overview_stores_invoices_and_anomalies(
     bento_headers = login_headers(client, "bento.owner@example.com")
     gov_headers = government_headers(client)
 
-    qr = create_qr_batch(client, tea_headers, "GOV-001", cup_count=2)
+    qr = create_qr_batch(client, tea_headers, "GOV-001", item_count=2)
     client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
@@ -592,9 +596,9 @@ def test_government_read_only_apis_cover_overview_stores_invoices_and_anomalies(
     params = stats_range()
     overview = client.get("/government/overview", headers=gov_headers, params=params)
     assert overview.status_code == 200
-    assert overview.json()["issuedCupCount"] == 2
-    assert overview.json()["returnedCupCount"] == 1
-    assert overview.json()["remainingCupCount"] == 1
+    assert overview.json()["issuedCount"] == 2
+    assert overview.json()["returnedCount"] == 1
+    assert overview.json()["remainingCount"] == 1
     assert overview.json()["partialReturnedInvoiceCount"] == 1
     assert "depositTotal" not in overview.json()
 
@@ -602,9 +606,9 @@ def test_government_read_only_apis_cover_overview_stores_invoices_and_anomalies(
     assert stores.status_code == 200
     tea_store = next(store for store in stores.json()["stores"] if store["storeCode"] == "tea-shop")
     bento_store = next(store for store in stores.json()["stores"] if store["storeCode"] == "bento-shop")
-    assert tea_store["issuedCupCount"] == 2
-    assert bento_store["returnedCupCount"] == 1
-    assert bento_store["crossStoreReturnedCount"] == 1
+    assert tea_store["issuedCount"] == 2
+    assert bento_store["returnedCount"] == 1
+    assert bento_store["crossStoreCount"] == 1
 
     daily_sold = client.get("/government/daily/sold", headers=gov_headers, params=daily_stats_range())
     assert daily_sold.status_code == 200
@@ -622,9 +626,9 @@ def test_government_read_only_apis_cover_overview_stores_invoices_and_anomalies(
     assert invoices.status_code == 200
     invoice = next(item for item in invoices.json()["invoices"] if item["invoiceCode"] == "GOV-001")
     assert invoice["qrValue"] == "GOV-001|tea-shop|cup"
-    assert invoice["totalCupCount"] == 2
+    assert invoice["totalCount"] == 2
     assert invoice["returnedCount"] == 1
-    assert invoice["remainingCupCount"] == 1
+    assert invoice["remainingCount"] == 1
 
     detail = client.get(f"/government/invoices/{qr['loanId']}", headers=gov_headers)
     assert detail.status_code == 200

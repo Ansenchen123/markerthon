@@ -24,7 +24,7 @@ class APIModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class ContainerType(str, Enum):
+class CategoryLabel(str, Enum):
     cup = "cup"
     meal_box = "meal_box"
 
@@ -110,8 +110,8 @@ class GovernmentLoginResponse(APIModel):
 
 class QRCodeCreate(APIModel):
     invoice_code: str = Field(alias="invoiceCode", min_length=1, max_length=80)
-    container_type: ContainerType = Field(alias="containerType")
-    cup_count: int = Field(alias="cupCount", ge=1, le=100)
+    category: CategoryLabel = Field(alias="category")
+    count: int = Field(alias="count", ge=1, le=100)
 
 
 class QRCodeResponse(APIModel):
@@ -119,11 +119,11 @@ class QRCodeResponse(APIModel):
     qr_value: str = Field(alias="qrValue")
     invoice_code: str = Field(alias="invoiceCode")
     store_code: str = Field(alias="storeCode")
-    container_type: ContainerType = Field(alias="containerType")
-    added_cup_count: int = Field(alias="addedCupCount")
-    total_cup_count: int = Field(alias="totalCupCount")
+    category: CategoryLabel = Field(alias="category")
+    added_count: int = Field(alias="addedCount")
+    total_count: int = Field(alias="totalCount")
     returned_count: int = Field(alias="returnedCount")
-    remaining_cup_count: int = Field(alias="remainingCupCount")
+    remaining_count: int = Field(alias="remainingCount")
     issued_at: datetime = Field(alias="issuedAt")
     due_at: datetime = Field(alias="dueAt")
 
@@ -138,14 +138,14 @@ class ReturnScanResponse(APIModel):
     accepted: bool
     loan_id: int = Field(alias="loanId")
     status: str
-    container_type: ContainerType = Field(alias="containerType")
+    category: CategoryLabel = Field(alias="category")
     invoice_code: str = Field(alias="invoiceCode")
     issued_store_id: int = Field(alias="issuedStoreId")
     returned_store_id: int = Field(alias="returnedStoreId")
-    cup_count: int = Field(alias="cupCount")
-    total_cup_count: int = Field(alias="totalCupCount")
+    count: int = Field(alias="count")
+    total_count: int = Field(alias="totalCount")
     returned_count: int = Field(alias="returnedCount")
-    remaining_cup_count: int = Field(alias="remainingCupCount")
+    remaining_count: int = Field(alias="remainingCount")
     refund_reason: str = Field(alias="refundReason")
     is_expired: bool = Field(alias="isExpired")
     is_abnormal: bool = Field(alias="isAbnormal")
@@ -153,11 +153,15 @@ class ReturnScanResponse(APIModel):
     returned_at: datetime = Field(alias="returnedAt")
 
 
+class CategoryCount(APIModel):
+    category: CategoryLabel
+    count: int
+
+
 class MerchantSoldStatsRow(APIModel):
     stat_date: date = Field(alias="statDate")
     total_count: int = Field(alias="totalCount")
-    cup_count: int = Field(alias="cupCount")
-    meal_box_count: int = Field(alias="mealBoxCount")
+    category_counts: list[CategoryCount] = Field(alias="categoryCounts")
 
 
 class MerchantSoldStatsResponse(APIModel):
@@ -170,8 +174,7 @@ class MerchantSoldStatsResponse(APIModel):
 class MerchantRecoveredStatsRow(APIModel):
     stat_date: date = Field(alias="statDate")
     total_count: int = Field(alias="totalCount")
-    cup_count: int = Field(alias="cupCount")
-    meal_box_count: int = Field(alias="mealBoxCount")
+    category_counts: list[CategoryCount] = Field(alias="categoryCounts")
     normal_count: int = Field(alias="normalCount")
     expired_count: int = Field(alias="expiredCount")
     abnormal_count: int = Field(alias="abnormalCount")
@@ -188,26 +191,26 @@ class MerchantRecoveredStatsResponse(APIModel):
 class GovernmentOverviewResponse(APIModel):
     from_at: datetime = Field(alias="from")
     to_at: datetime = Field(alias="to")
-    issued_cup_count: int = Field(alias="issuedCupCount")
-    returned_cup_count: int = Field(alias="returnedCupCount")
-    remaining_cup_count: int = Field(alias="remainingCupCount")
+    issued_count: int = Field(alias="issuedCount")
+    returned_count: int = Field(alias="returnedCount")
+    remaining_count: int = Field(alias="remainingCount")
     recovery_rate: float = Field(alias="recoveryRate")
     active_invoice_count: int = Field(alias="activeInvoiceCount")
     returned_invoice_count: int = Field(alias="returnedInvoiceCount")
     partial_returned_invoice_count: int = Field(alias="partialReturnedInvoiceCount")
-    overdue_cup_count: int = Field(alias="overdueCupCount")
-    abnormal_cup_count: int = Field(alias="abnormalCupCount")
+    overdue_count: int = Field(alias="overdueCount")
+    abnormal_count: int = Field(alias="abnormalCount")
 
 
 class GovernmentStoreStatsResponse(APIModel):
     store_id: int = Field(alias="storeId")
     store_code: str = Field(alias="storeCode")
     store_name: str = Field(alias="storeName")
-    issued_cup_count: int = Field(alias="issuedCupCount")
-    returned_cup_count: int = Field(alias="returnedCupCount")
-    remaining_cup_count: int = Field(alias="remainingCupCount")
-    cross_store_returned_count: int = Field(alias="crossStoreReturnedCount")
-    abnormal_cup_count: int = Field(alias="abnormalCupCount")
+    issued_count: int = Field(alias="issuedCount")
+    returned_count: int = Field(alias="returnedCount")
+    remaining_count: int = Field(alias="remainingCount")
+    cross_store_count: int = Field(alias="crossStoreCount")
+    abnormal_count: int = Field(alias="abnormalCount")
     recovery_rate: float = Field(alias="recoveryRate")
     last_activity_at: Optional[datetime] = Field(default=None, alias="lastActivityAt")
 
@@ -226,10 +229,10 @@ class GovernmentInvoiceSummary(APIModel):
     store_code: str = Field(alias="storeCode")
     store_name: str = Field(alias="storeName")
     status: str
-    container_type: ContainerType = Field(alias="containerType")
-    total_cup_count: int = Field(alias="totalCupCount")
+    category: CategoryLabel = Field(alias="category")
+    total_count: int = Field(alias="totalCount")
     returned_count: int = Field(alias="returnedCount")
-    remaining_cup_count: int = Field(alias="remainingCupCount")
+    remaining_count: int = Field(alias="remainingCount")
     issued_at: datetime = Field(alias="issuedAt")
     due_at: datetime = Field(alias="dueAt")
     returned_at: Optional[datetime] = Field(default=None, alias="returnedAt")
@@ -274,7 +277,7 @@ class GovernmentAnomalyResponse(APIModel):
     loan_id: Optional[int] = Field(default=None, alias="loanId")
     invoice_code: Optional[str] = Field(default=None, alias="invoiceCode")
     qr_value: Optional[str] = Field(default=None, alias="qrValue")
-    total_cup_count: Optional[int] = Field(default=None, alias="totalCupCount")
+    total_count: Optional[int] = Field(default=None, alias="totalCount")
     returned_count: Optional[int] = Field(default=None, alias="returnedCount")
     created_at: datetime = Field(alias="createdAt")
 
@@ -290,7 +293,7 @@ class GovernmentDailySoldStatsRow(APIModel):
     store_id: int = Field(alias="storeId")
     store_code: str = Field(alias="storeCode")
     store_name: str = Field(alias="storeName")
-    container_type: ContainerType = Field(alias="containerType")
+    category: CategoryLabel
     sold_count: int = Field(alias="soldCount")
 
 
@@ -305,7 +308,7 @@ class GovernmentDailyRecoveredStatsRow(APIModel):
     store_id: int = Field(alias="storeId")
     store_code: str = Field(alias="storeCode")
     store_name: str = Field(alias="storeName")
-    container_type: ContainerType = Field(alias="containerType")
+    category: CategoryLabel
     recovered_count: int = Field(alias="recoveredCount")
     normal_count: int = Field(alias="normalCount")
     expired_count: int = Field(alias="expiredCount")

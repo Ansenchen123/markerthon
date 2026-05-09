@@ -7,7 +7,8 @@ from app.database import get_db
 from app.daily_reports import append_recovered_report_row, append_sold_report_row, iter_report_dates, read_report_rows
 from app.models import Loan, MerchantUser, RefundLedger, ScanEvent
 from app.schemas import (
-    ContainerType,
+    CategoryLabel,
+    CategoryCount,
     MerchantRecoveredStatsRow,
     MerchantRecoveredStatsResponse,
     MerchantSoldStatsRow,
@@ -25,8 +26,8 @@ from app.time_utils import due_at_from, now_taipei
 router = APIRouter(prefix="/merchant", tags=["merchant"])
 
 DEPOSIT_AMOUNTS = {
-    ContainerType.cup: 20,
-    ContainerType.meal_box: 50,
+    CategoryLabel.cup: 20,
+    CategoryLabel.meal_box: 50,
 }
 
 
@@ -45,7 +46,11 @@ def _ensure_store_scope(store_id: int, current_user: MerchantUser) -> None:
 
 
 def _row_count(row: dict[str, str]) -> int:
-    return int(row.get("cupCount") or 0)
+    return int(row.get("count") or 0)
+
+
+def _row_category(row: dict[str, str]) -> str:
+    return row.get("category") or ""
 
 
 def _row_bool(row: dict[str, str], key: str) -> bool:
@@ -79,24 +84,24 @@ def _sold_stat_rows(
     to_date: date,
 ) -> list[MerchantSoldStatsRow]:
     summaries = {
-        stat_date: {"totalCount": 0, "cupCount": 0, "mealBoxCount": 0}
+        stat_date: {"totalCount": 0, "categoryCounts": {category.value: 0 for category in CategoryLabel}}
         for stat_date in iter_report_dates(from_date, to_date)
     }
     for row in rows:
         stat_date = datetime.fromisoformat(row["occurredAt"]).date()
         count = _row_count(row)
         summaries[stat_date]["totalCount"] += count
-        if row["containerType"] == ContainerType.cup.value:
-            summaries[stat_date]["cupCount"] += count
-        elif row["containerType"] == ContainerType.meal_box.value:
-            summaries[stat_date]["mealBoxCount"] += count
+        category = _row_category(row)
+        summaries[stat_date]["categoryCounts"][category] = summaries[stat_date]["categoryCounts"].get(category, 0) + count
 
     return [
         MerchantSoldStatsRow(
             statDate=stat_date,
             totalCount=summary["totalCount"],
-            cupCount=summary["cupCount"],
-            mealBoxCount=summary["mealBoxCount"],
+            categoryCounts=[
+                CategoryCount(category=category, count=count)
+                for category, count in sorted(summary["categoryCounts"].items())
+            ],
         )
         for stat_date, summary in summaries.items()
     ]
@@ -111,8 +116,7 @@ def _recovered_stat_rows(
     summaries = {
         stat_date: {
             "totalCount": 0,
-            "cupCount": 0,
-            "mealBoxCount": 0,
+            "categoryCounts": {category.value: 0 for category in CategoryLabel},
             "normalCount": 0,
             "expiredCount": 0,
             "abnormalCount": 0,
@@ -124,10 +128,8 @@ def _recovered_stat_rows(
         stat_date = datetime.fromisoformat(row["occurredAt"]).date()
         count = _row_count(row)
         summaries[stat_date]["totalCount"] += count
-        if row["containerType"] == ContainerType.cup.value:
-            summaries[stat_date]["cupCount"] += count
-        elif row["containerType"] == ContainerType.meal_box.value:
-            summaries[stat_date]["mealBoxCount"] += count
+        category = _row_category(row)
+        summaries[stat_date]["categoryCounts"][category] = summaries[stat_date]["categoryCounts"].get(category, 0) + count
         summaries[stat_date]["normalCount"] += (
             count if not _row_bool(row, "isExpired") and not _row_bool(row, "isAbnormal") else 0
         )
@@ -139,8 +141,10 @@ def _recovered_stat_rows(
         MerchantRecoveredStatsRow(
             statDate=stat_date,
             totalCount=summary["totalCount"],
-            cupCount=summary["cupCount"],
-            mealBoxCount=summary["mealBoxCount"],
+            categoryCounts=[
+                CategoryCount(category=category, count=count)
+                for category, count in sorted(summary["categoryCounts"].items())
+            ],
             normalCount=summary["normalCount"],
             expiredCount=summary["expiredCount"],
             abnormalCount=summary["abnormalCount"],
@@ -161,22 +165,22 @@ def create_qr_code(
         select(Loan).where(
             Loan.issued_store_id == current_user.store_id,
             Loan.invoice_code == payload.invoice_code,
-            Loan.container_type == payload.container_type.value,
+            Loan.container_type == payload.category.value,
             Loan.invoice_sequence == 1,
         )
     )
 
-    qr_value = generate_qr_value(payload.invoice_code, current_user.store.code, payload.container_type.value)
+    qr_value = generate_qr_value(payload.invoice_code, current_user.store.code, payload.category.value)
     if loan is None:
         loan = Loan(
             qr_token_hash=hash_qr_value(qr_value),
             issued_store_id=current_user.store_id,
             invoice_code=payload.invoice_code,
             invoice_sequence=1,
-            cup_count=payload.cup_count,
+            item_count=payload.count,
             returned_count=0,
-            container_type=payload.container_type.value,
-            deposit_amount=DEPOSIT_AMOUNTS[payload.container_type],
+            container_type=payload.category.value,
+            deposit_amount=DEPOSIT_AMOUNTS[payload.category],
             status="active",
             issued_at=issued_at,
             due_at=due_at_from(issued_at),
@@ -184,7 +188,7 @@ def create_qr_code(
         db.add(loan)
     else:
         loan.qr_token_hash = hash_qr_value(qr_value)
-        loan.cup_count += payload.cup_count
+        loan.item_count += payload.count
         if loan.status == "returned":
             loan.status = "partial_returned"
 
@@ -193,7 +197,7 @@ def create_qr_code(
     append_sold_report_row(
         loan=loan,
         qr_value=qr_value,
-        added_count=payload.cup_count,
+        added_count=payload.count,
         occurred_at=issued_at,
     )
 
@@ -202,11 +206,11 @@ def create_qr_code(
         qrValue=qr_value,
         invoiceCode=payload.invoice_code,
         storeCode=current_user.store.code,
-        containerType=loan.container_type,
-        addedCupCount=payload.cup_count,
-        totalCupCount=loan.cup_count,
+        category=loan.container_type,
+        addedCount=payload.count,
+        totalCount=loan.item_count,
         returnedCount=loan.returned_count,
-        remainingCupCount=loan.cup_count - loan.returned_count,
+        remainingCount=loan.item_count - loan.returned_count,
         issuedAt=loan.issued_at,
         dueAt=loan.due_at,
     )
@@ -237,7 +241,7 @@ def scan_return(
         db.commit()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="QR value is not recognized")
 
-    remaining_count = loan.cup_count - loan.returned_count
+    remaining_count = loan.item_count - loan.returned_count
     if remaining_count <= 0 or loan.status == "returned":
         db.add(
             ScanEvent(
@@ -262,7 +266,7 @@ def scan_return(
     scan_result = "returned" if refund_amount == loan.deposit_amount * return_count else "returned_no_refund"
 
     loan.returned_count += return_count
-    loan.status = "returned" if loan.returned_count == loan.cup_count else "partial_returned"
+    loan.status = "returned" if loan.returned_count == loan.item_count else "partial_returned"
     loan.returned_at = scanned_at
     loan.returned_store_id = current_user.store_id
     loan.return_condition = condition.value
@@ -318,14 +322,14 @@ def scan_return(
         accepted=True,
         loanId=loan.id,
         status=loan.status,
-        containerType=loan.container_type,
+        category=loan.container_type,
         invoiceCode=loan.invoice_code,
         issuedStoreId=loan.issued_store_id,
         returnedStoreId=loan.returned_store_id,
-        cupCount=return_count,
-        totalCupCount=loan.cup_count,
+        count=return_count,
+        totalCount=loan.item_count,
         returnedCount=loan.returned_count,
-        remainingCupCount=loan.cup_count - loan.returned_count,
+        remainingCount=loan.item_count - loan.returned_count,
         refundReason=refund_reason,
         isExpired=is_expired,
         isAbnormal=is_abnormal,
