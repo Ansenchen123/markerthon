@@ -87,8 +87,6 @@ def create_qr_code(
         totalCupCount=loan.cup_count,
         returnedCount=loan.returned_count,
         remainingCupCount=loan.cup_count - loan.returned_count,
-        depositAmount=loan.deposit_amount,
-        totalDepositAmount=loan.cup_count * loan.deposit_amount,
         issuedAt=loan.issued_at,
         dueAt=loan.due_at,
     )
@@ -190,8 +188,6 @@ def scan_return(
         totalCupCount=loan.cup_count,
         returnedCount=loan.returned_count,
         remainingCupCount=loan.cup_count - loan.returned_count,
-        depositAmount=loan.deposit_amount,
-        refundAmount=refund_amount,
         refundReason=refund_reason,
         isExpired=is_expired,
         isAbnormal=is_abnormal,
@@ -226,7 +222,6 @@ def get_sold_stats(
         totalCount=sum(loan.cup_count for loan in loans),
         cupCount=sum(loan.cup_count for loan in loans if loan.container_type == ContainerType.cup.value),
         mealBoxCount=sum(loan.cup_count for loan in loans if loan.container_type == ContainerType.meal_box.value),
-        depositTotal=sum(loan.deposit_amount * loan.cup_count for loan in loans),
     )
 
 
@@ -258,8 +253,6 @@ def get_recovered_stats(
     abnormal_count = sum(
         loan.returned_count for loan in loans if loan.return_condition and loan.return_condition != ReturnCondition.normal.value
     )
-    refund_total = sum(loan.refund_ledger.refund_amount for loan in loans if loan.refund_ledger is not None)
-
     return MerchantRecoveredStatsResponse(
         storeId=current_user.store_id,
         **{"from": from_at, "to": to_at},
@@ -269,5 +262,4 @@ def get_recovered_stats(
         expiredCount=expired_count,
         abnormalCount=abnormal_count,
         crossStoreCount=sum(loan.returned_count for loan in loans if loan.issued_store_id != loan.returned_store_id),
-        refundTotal=refund_total,
     )

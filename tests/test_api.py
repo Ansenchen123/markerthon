@@ -88,7 +88,7 @@ def test_login_success_and_failure(context):
     assert failure.status_code == 401
 
 
-def test_create_qr_code_uses_cup_count_and_deposit_amounts(context):
+def test_create_qr_code_uses_cup_count_without_exposing_amounts(context):
     client, _ = context
     headers = login_headers(client)
 
@@ -100,8 +100,8 @@ def test_create_qr_code_uses_cup_count_and_deposit_amounts(context):
     assert batch["totalCupCount"] == 3
     assert batch["returnedCount"] == 0
     assert batch["remainingCupCount"] == 3
-    assert batch["totalDepositAmount"] == 60
-    assert batch["depositAmount"] == 20
+    assert "totalDepositAmount" not in batch
+    assert "depositAmount" not in batch
     assert batch["qrValue"] == "CUP-001|tea-shop"
 
 
@@ -139,7 +139,8 @@ def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
         json={"qrValue": qr["qrValue"], "condition": "normal"},
     )
     assert returned.status_code == 200
-    assert returned.json()["refundAmount"] == 20
+    assert "refundAmount" not in returned.json()
+    assert "depositAmount" not in returned.json()
     assert returned.json()["refundReason"] == "normal"
     assert returned.json()["isExpired"] is False
     assert returned.json()["isAbnormal"] is False
@@ -176,7 +177,7 @@ def test_invoice_qr_returns_one_cup_per_scan(context):
     )
     assert first_return.status_code == 200
     assert first_return.json()["status"] == "partial_returned"
-    assert first_return.json()["refundAmount"] == 20
+    assert "refundAmount" not in first_return.json()
     assert first_return.json()["cupCount"] == 1
     assert first_return.json()["returnedCount"] == 1
     assert first_return.json()["remainingCupCount"] == 2
@@ -188,7 +189,6 @@ def test_invoice_qr_returns_one_cup_per_scan(context):
     )
     assert second_return.status_code == 200
     assert second_return.json()["status"] == "partial_returned"
-    assert second_return.json()["refundAmount"] == 20
     assert second_return.json()["returnedCount"] == 2
     assert second_return.json()["remainingCupCount"] == 1
 
@@ -199,7 +199,6 @@ def test_invoice_qr_returns_one_cup_per_scan(context):
     )
     assert final_return.status_code == 200
     assert final_return.json()["status"] == "returned"
-    assert final_return.json()["refundAmount"] == 20
     assert final_return.json()["returnedCount"] == 3
     assert final_return.json()["remainingCupCount"] == 0
 
@@ -244,8 +243,8 @@ def test_expired_and_damaged_returns_are_recovered_without_refund(context):
         json={"qrValue": expired_qr["qrValue"], "condition": "normal", "note": "late return"},
     )
     assert expired_return.status_code == 200
-    assert expired_return.json()["refundAmount"] == 0
     assert expired_return.json()["refundReason"] == "expired"
+    assert "refundAmount" not in expired_return.json()
 
     damaged_qr = create_qr(client, headers, "DMG-001")
     damaged_return = client.post(
@@ -254,8 +253,8 @@ def test_expired_and_damaged_returns_are_recovered_without_refund(context):
         json={"qrValue": damaged_qr["qrValue"], "condition": "damaged", "note": "cracked lid"},
     )
     assert damaged_return.status_code == 200
-    assert damaged_return.json()["refundAmount"] == 0
     assert damaged_return.json()["refundReason"] == "damaged"
+    assert "refundAmount" not in damaged_return.json()
 
 
 def test_merchant_stats_are_scoped_to_current_store(context):
@@ -275,7 +274,7 @@ def test_merchant_stats_are_scoped_to_current_store(context):
     tea_sold = client.get("/merchant/stats/sold", headers=tea_headers, params=params)
     assert tea_sold.status_code == 200
     assert tea_sold.json()["totalCount"] == 2
-    assert tea_sold.json()["depositTotal"] == 40
+    assert "depositTotal" not in tea_sold.json()
 
     bento_sold = client.get("/merchant/stats/sold", headers=bento_headers, params=params)
     assert bento_sold.status_code == 200

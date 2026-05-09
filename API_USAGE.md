@@ -102,7 +102,7 @@ Request:
 }
 ```
 
-每杯押金固定為 `20`。`cupCount` 最小為 `1`，最大為 `100`。
+`cupCount` 最小為 `1`，最大為 `100`。押金由後端內部帳本處理，不在商家 API 回傳。
 
 Response `201`:
 
@@ -116,8 +116,6 @@ Response `201`:
   "totalCupCount": 2,
   "returnedCount": 0,
   "remainingCupCount": 2,
-  "depositAmount": 20,
-  "totalDepositAmount": 40,
   "issuedAt": "2026-05-09T12:05:32.062579",
   "dueAt": "2026-05-12T12:05:32.062579"
 }
@@ -167,8 +165,6 @@ Response `200` for normal in-time return:
   "totalCupCount": 2,
   "returnedCount": 1,
   "remainingCupCount": 1,
-  "depositAmount": 20,
-  "refundAmount": 20,
   "refundReason": "normal",
   "isExpired": false,
   "isAbnormal": false,
@@ -192,8 +188,6 @@ Response `200` for expired or abnormal return:
   "totalCupCount": 2,
   "returnedCount": 1,
   "remainingCupCount": 1,
-  "depositAmount": 20,
-  "refundAmount": 0,
   "refundReason": "expired",
   "isExpired": true,
   "isAbnormal": false,
@@ -213,7 +207,7 @@ DB changes on accepted return:
 | Table | Change |
 |---|---|
 | `loans` | `returned_count += 1`；未全數回收為 `partial_returned`，全數回收為 `returned` |
-| `refund_ledgers` | 累加退押帳本；正常未逾期每次掃描退 `20`，逾期或異常為 0 |
+| `refund_ledgers` | 內部累加退押帳本；不回傳金額給商家 API |
 | `scan_events` | 新增掃碼事件，供異常統計與稽核 |
 
 ### 3. GET `/merchant/stats/sold`
@@ -245,8 +239,7 @@ Response `200`:
   "containerType": "cup",
   "totalCount": 1,
   "cupCount": 1,
-  "mealBoxCount": 0,
-  "depositTotal": 20
+  "mealBoxCount": 0
 }
 ```
 
@@ -287,8 +280,7 @@ Response `200`:
   "normalCount": 1,
   "expiredCount": 0,
   "abnormalCount": 0,
-  "crossStoreCount": 0,
-  "refundTotal": 20
+  "crossStoreCount": 0
 }
 ```
 
@@ -297,7 +289,6 @@ DB read:
 | Table | Filter |
 |---|---|
 | `loans` | `returned_store_id = current_store_id` and `returned_at` between `from` and `to` |
-| `refund_ledgers` | 加總同一批回收紀錄的 `refund_amount` |
 
 ## cURL 全流程範例
 

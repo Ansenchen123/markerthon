@@ -52,8 +52,6 @@ class QRCodeResponse(APIModel):
     total_cup_count: int = Field(alias="totalCupCount")
     returned_count: int = Field(alias="returnedCount")
     remaining_cup_count: int = Field(alias="remainingCupCount")
-    deposit_amount: int = Field(alias="depositAmount")
-    total_deposit_amount: int = Field(alias="totalDepositAmount")
     issued_at: datetime = Field(alias="issuedAt")
     due_at: datetime = Field(alias="dueAt")
 
@@ -76,8 +74,6 @@ class ReturnScanResponse(APIModel):
     total_cup_count: int = Field(alias="totalCupCount")
     returned_count: int = Field(alias="returnedCount")
     remaining_cup_count: int = Field(alias="remainingCupCount")
-    deposit_amount: int = Field(alias="depositAmount")
-    refund_amount: int = Field(alias="refundAmount")
     refund_reason: str = Field(alias="refundReason")
     is_expired: bool = Field(alias="isExpired")
     is_abnormal: bool = Field(alias="isAbnormal")
@@ -93,7 +89,6 @@ class MerchantSoldStatsResponse(APIModel):
     total_count: int = Field(alias="totalCount")
     cup_count: int = Field(alias="cupCount")
     meal_box_count: int = Field(alias="mealBoxCount")
-    deposit_total: int = Field(alias="depositTotal")
 
 
 class MerchantRecoveredStatsResponse(APIModel):
@@ -106,4 +101,3 @@ class MerchantRecoveredStatsResponse(APIModel):
     expired_count: int = Field(alias="expiredCount")
     abnormal_count: int = Field(alias="abnormalCount")
     cross_store_count: int = Field(alias="crossStoreCount")
-    refund_total: int = Field(alias="refundTotal")
