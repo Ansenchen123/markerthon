@@ -201,6 +201,10 @@ export type MerchantRecoveredStatsRow = MerchantSoldStatsRow & {
 
 export type MerchantSoldStatsResponse = {
   storeId: number;
+<<<<<<< HEAD
+=======
+  storeName: string;
+>>>>>>> 0a34802465ca3fa0186acf7243492bda113c14b8
   from: string;
   to: string;
   rows: MerchantSoldStatsRow[];
@@ -208,6 +212,10 @@ export type MerchantSoldStatsResponse = {
 
 export type MerchantRecoveredStatsResponse = {
   storeId: number;
+<<<<<<< HEAD
+=======
+  storeName: string;
+>>>>>>> 0a34802465ca3fa0186acf7243492bda113c14b8
   from: string;
   to: string;
   rows: MerchantRecoveredStatsRow[];

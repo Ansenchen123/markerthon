@@ -285,20 +285,20 @@ DB changes on accepted return:
 
 ### 3. GET `/merchant/stats/sold`
 
-查詢指定商家在日期區間內每天賣出多少循環容器。`storeName` 必須等於登入商家 JWT 所屬店名；若傳入其他商家會回 `403`。商家端不提供分類 filter；後端會一次回傳全部分類，並在每天的 row 裡用 `categoryCounts` 列出各分類數量。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
+查詢登入商家在日期區間內每天賣出多少循環容器。`storeId` 必須等於登入商家 JWT 所屬店家 ID；若傳入其他商家會回 `403`。商家端不提供分類 filter；後端會一次回傳全部分類，並在每天的 row 裡用 `categoryCounts` 列出各分類數量。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
 
 Query params:
 
 | Name | Required | Example |
 |---|---|---|
-| `storeName` | yes | `青山茶飲` |
+| `storeId` | yes | `1` |
 | `from` | yes | `2026-05-08` |
 | `to` | yes | `2026-05-10` |
 
 Example:
 
 ```http
-GET /merchant/stats/sold?storeName=青山茶飲&from=2026-05-08&to=2026-05-10
+GET /merchant/stats/sold?storeId=1&from=2026-05-08&to=2026-05-10
 Authorization: Bearer <accessToken>
 ```
 
@@ -306,6 +306,7 @@ Response `200`:
 
 ```json
 {
+  "storeId": 1,
   "storeName": "青山茶飲",
   "from": "2026-05-08",
   "to": "2026-05-10",
@@ -365,20 +366,20 @@ CSV read:
 
 ### 4. GET `/merchant/stats/recovered`
 
-查詢指定商家在日期區間內每天回收多少循環容器。`storeName` 必須等於登入商家 JWT 所屬店名；若傳入其他商家會回 `403`。商家端不提供分類 filter；後端會一次回傳全部分類，並在每天的 row 裡列出總數、`categoryCounts` 與回收狀態分項。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
+查詢登入商家在日期區間內每天回收多少循環容器。`storeId` 必須等於登入商家 JWT 所屬店家 ID；若傳入其他商家會回 `403`。商家端不提供分類 filter；後端會一次回傳全部分類，並在每天的 row 裡列出總數、`categoryCounts` 與回收狀態分項。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
 
 Query params:
 
 | Name | Required | Example |
 |---|---|---|
-| `storeName` | yes | `青山茶飲` |
+| `storeId` | yes | `1` |
 | `from` | yes | `2026-05-08` |
 | `to` | yes | `2026-05-10` |
 
 Example:
 
 ```http
-GET /merchant/stats/recovered?storeName=青山茶飲&from=2026-05-08&to=2026-05-10
+GET /merchant/stats/recovered?storeId=1&from=2026-05-08&to=2026-05-10
 Authorization: Bearer <accessToken>
 ```
 
@@ -386,6 +387,7 @@ Response `200`:
 
 ```json
 {
+  "storeId": 1,
   "storeName": "青山茶飲",
   "from": "2026-05-08",
   "to": "2026-05-10",
@@ -473,10 +475,10 @@ curl -s -X POST http://127.0.0.1:8000/merchant/returns/scan \
   -H 'Content-Type: application/json' \
   -d "{\"qrValue\":\"$QR_VALUE\"}"
 
-curl -s "http://127.0.0.1:8000/merchant/stats/sold?storeName=青山茶飲&from=2026-05-08&to=2026-05-10" \
+curl -s "http://127.0.0.1:8000/merchant/stats/sold?storeId=1&from=2026-05-08&to=2026-05-10" \
   -H "Authorization: Bearer $TOKEN"
 
-curl -s "http://127.0.0.1:8000/merchant/stats/recovered?storeName=青山茶飲&from=2026-05-08&to=2026-05-10" \
+curl -s "http://127.0.0.1:8000/merchant/stats/recovered?storeId=1&from=2026-05-08&to=2026-05-10" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -661,11 +663,17 @@ Response `200`:
 }
 ```
 
-### GET `/government/web/stores/{storeId}`
+### GET `/government/web/stores`
 
-特定店家狀況查詢。
+特定店家狀況查詢。政府端用店家名稱查詢，不用商家 ID。
 
-Query params: optional `year`, `month`
+Query params:
+
+| Name | Required | Example |
+|---|---|---|
+| `storeName` | yes | `青山茶飲` |
+| `year` | no | `2026` |
+| `month` | no | `5` |
 
 Response `200`:
 

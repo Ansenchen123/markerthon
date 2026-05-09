@@ -85,7 +85,7 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
     start_date = today - timedelta(days=days - 1)
     merchant_sessions = {key: _merchant_session(client, email) for key, email in MERCHANT_EMAILS.items()}
     merchant_headers = {key: session["headers"] for key, session in merchant_sessions.items()}
-    merchant_store_names = {key: session["storeName"] for key, session in merchant_sessions.items()}
+    merchant_store_ids = {key: session["storeId"] for key, session in merchant_sessions.items()}
     government_headers = _login(client, "gov.admin@example.com", path="/government/auth/login")
     created_batches: list[dict[str, Any]] = []
 
@@ -194,7 +194,7 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
             "/merchant/stats/sold",
             headers=merchant_headers["tea"],
             params={
-                "storeName": merchant_store_names["tea"],
+                "storeId": merchant_store_ids["tea"],
                 "from": start_date.isoformat(),
                 "to": today.isoformat(),
             },

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -245,15 +245,15 @@ def get_government_web_top_stores(
     )
 
 
-@router.get("/web/stores/{storeId}", response_model=GovernmentWebStoreStatusResponse)
+@router.get("/web/stores", response_model=GovernmentWebStoreStatusResponse)
 def get_government_web_store_status(
-    store_id: int = Path(..., alias="storeId"),
+    store_name: str = Query(..., alias="storeName", min_length=1),
     year: Optional[int] = Query(default=None, ge=2000, le=2100),
     month: Optional[int] = Query(default=None, ge=1, le=12),
     db: Session = Depends(get_db),
     _: GovernmentUser = Depends(get_current_government_user),
 ) -> GovernmentWebStoreStatusResponse:
-    store = db.get(Store, store_id)
+    store = db.scalar(select(Store).where(Store.name == store_name.strip()).order_by(Store.id))
     if store is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
 

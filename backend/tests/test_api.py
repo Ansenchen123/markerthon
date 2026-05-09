@@ -91,10 +91,10 @@ def stats_range() -> dict[str, str]:
     }
 
 
-def merchant_stats_range(store_name: str) -> dict[str, str]:
+def merchant_stats_range(store_id: int) -> dict[str, str]:
     today = now_taipei().date()
     return {
-        "storeName": store_name,
+        "storeId": str(store_id),
         "from": (today - timedelta(days=1)).isoformat(),
         "to": (today + timedelta(days=1)).isoformat(),
     }
@@ -221,7 +221,7 @@ def test_government_login_and_role_isolation(context):
     government_on_merchant = client.get(
         "/merchant/stats/sold",
         headers=gov_headers,
-        params=merchant_stats_range("青山茶飲"),
+        params=merchant_stats_range(1),
     )
     assert government_on_merchant.status_code == 403
 
@@ -550,20 +550,24 @@ def test_merchant_stats_are_scoped_to_current_store(context):
         first_loan = db.get(Loan, tea_qr["loanId"])
         second_loan = db.get(Loan, second_tea_qr["loanId"])
         meal_box_loan = db.get(Loan, tea_meal_box_qr["loanId"])
-        tea_store_name = db.scalar(select(Store.name).where(Store.code == "tea-shop"))
-        bento_store_name = db.scalar(select(Store.name).where(Store.code == "bento-shop"))
+        tea_store_id, tea_store_name = db.execute(
+            select(Store.id, Store.name).where(Store.code == "tea-shop")
+        ).one()
+        bento_store_id, bento_store_name = db.execute(
+            select(Store.id, Store.name).where(Store.code == "bento-shop")
+        ).one()
         first_loan.returned_count = 42
         second_loan.item_count = 99
         meal_box_loan.item_count = 88
         db.commit()
 
-    tea_params = merchant_stats_range(tea_store_name)
-    bento_params = merchant_stats_range(bento_store_name)
+    tea_params = merchant_stats_range(tea_store_id)
+    bento_params = merchant_stats_range(bento_store_id)
     today = now_taipei().date().isoformat()
     tea_sold = client.get("/merchant/stats/sold", headers=tea_headers, params=tea_params)
     assert tea_sold.status_code == 200
+    assert tea_sold.json()["storeId"] == tea_store_id
     assert tea_sold.json()["storeName"] == tea_store_name
-    assert "storeId" not in tea_sold.json()
     assert len(tea_sold.json()["rows"]) == 3
     assert "category" not in tea_sold.json()
     assert tea_sold.json()["remainingCount"] == 2
@@ -574,10 +578,10 @@ def test_merchant_stats_are_scoped_to_current_store(context):
     assert count_for_category(tea_sold_today, "meal_box") == 2
     assert "depositTotal" not in tea_sold.json()
 
-    legacy_id_params = {**tea_params, "storeId": "1"}
-    legacy_id_params.pop("storeName")
-    legacy_id_response = client.get("/merchant/stats/sold", headers=tea_headers, params=legacy_id_params)
-    assert legacy_id_response.status_code == 422
+    legacy_name_params = {**tea_params, "storeName": tea_store_name}
+    legacy_name_params.pop("storeId")
+    legacy_name_response = client.get("/merchant/stats/sold", headers=tea_headers, params=legacy_name_params)
+    assert legacy_name_response.status_code == 422
 
     wrong_store = client.get("/merchant/stats/sold", headers=tea_headers, params=bento_params)
     assert wrong_store.status_code == 403
@@ -590,8 +594,8 @@ def test_merchant_stats_are_scoped_to_current_store(context):
 
     bento_recovered = client.get("/merchant/stats/recovered", headers=bento_headers, params=bento_params)
     assert bento_recovered.status_code == 200
+    assert bento_recovered.json()["storeId"] == bento_store_id
     assert bento_recovered.json()["storeName"] == bento_store_name
-    assert "storeId" not in bento_recovered.json()
     assert len(bento_recovered.json()["rows"]) == 3
     assert "category" not in bento_recovered.json()
     bento_recovered_today = next(row for row in bento_recovered.json()["rows"] if row["statDate"] == today)
@@ -684,7 +688,7 @@ def test_government_web_apis_cover_monthly_dashboard_and_store_status(context):
     client.post("/merchant/returns/scan", headers=bento_headers, json={"qrValue": bento_cup["qrValue"]})
 
     with SessionLocal() as db:
-        tea_store_id = db.scalar(select(Store.id).where(Store.code == "tea-shop"))
+        tea_store_name = db.scalar(select(Store.name).where(Store.code == "tea-shop"))
 
     params = month_params()
     usage = client.get("/government/web/monthly-usage", headers=gov_headers, params=params)
@@ -717,7 +721,11 @@ def test_government_web_apis_cover_monthly_dashboard_and_store_status(context):
     assert ranking.json()["rankings"][0]["remainingCount"] == 4
     assert ranking.json()["rankings"][0]["region"] == "台北市大安區"
 
-    store_status = client.get(f"/government/web/stores/{tea_store_id}", headers=gov_headers, params=params)
+    store_status = client.get(
+        "/government/web/stores",
+        headers=gov_headers,
+        params={**params, "storeName": tea_store_name},
+    )
     assert store_status.status_code == 200
     assert store_status.json()["store"]["code"] == "tea-shop"
     assert store_status.json()["store"]["region"] == "台北市大安區"
@@ -730,5 +738,12 @@ def test_government_web_apis_cover_monthly_dashboard_and_store_status(context):
     assert store_status.json()["mealBoxIssuedCount"] == 2
     assert store_status.json()["mealBoxReturnedCount"] == 1
 
-    missing_store = client.get("/government/web/stores/9999", headers=gov_headers, params=params)
+    missing_store = client.get(
+        "/government/web/stores",
+        headers=gov_headers,
+        params={**params, "storeName": "不存在店家"},
+    )
     assert missing_store.status_code == 404
+
+    legacy_id_store = client.get("/government/web/stores/1", headers=gov_headers, params=params)
+    assert legacy_id_store.status_code == 404
