@@ -214,7 +214,7 @@ Response `200` for normal in-time return:
 {
   "accepted": true,
   "loanId": 1,
-  "status": "returned",
+  "status": "partial_returned",
   "category": "cup",
   "invoiceCode": "INV-20260509-001",
   "issuedStoreId": 1,
@@ -247,7 +247,7 @@ Response `200` for expired return:
 {
   "accepted": true,
   "loanId": 1,
-  "status": "returned",
+  "status": "partial_returned",
   "category": "cup",
   "invoiceCode": "INV-20260509-001",
   "issuedStoreId": 1,

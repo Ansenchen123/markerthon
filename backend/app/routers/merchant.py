@@ -216,7 +216,14 @@ def create_qr_code(
     )
 
 
-@router.post("/returns/scan", response_model=ReturnScanResponse)
+@router.post(
+    "/returns/scan",
+    response_model=ReturnScanResponse,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "QR value is not recognized"},
+        status.HTTP_409_CONFLICT: {"description": "This QR value has already been returned"},
+    },
+)
 def scan_return(
     payload: ReturnScanRequest,
     db: Session = Depends(get_db),
@@ -338,7 +345,14 @@ def scan_return(
     )
 
 
-@router.get("/stats/sold", response_model=MerchantSoldStatsResponse)
+@router.get(
+    "/stats/sold",
+    response_model=MerchantSoldStatsResponse,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "from must be before or equal to to"},
+        status.HTTP_403_FORBIDDEN: {"description": "Store is not allowed for this merchant"},
+    },
+)
 def get_sold_stats(
     store_id: int = Query(..., alias="storeId"),
     from_date: date = Query(..., alias="from"),
@@ -362,7 +376,14 @@ def get_sold_stats(
     )
 
 
-@router.get("/stats/recovered", response_model=MerchantRecoveredStatsResponse)
+@router.get(
+    "/stats/recovered",
+    response_model=MerchantRecoveredStatsResponse,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "from must be before or equal to to"},
+        status.HTTP_403_FORBIDDEN: {"description": "Store is not allowed for this merchant"},
+    },
+)
 def get_recovered_stats(
     store_id: int = Query(..., alias="storeId"),
     from_date: date = Query(..., alias="from"),
