@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
+import socket
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -118,11 +119,11 @@ def _webapp_command(host: str, port: str) -> list[str]:
         "run",
         "dev",
         "--",
+        "--host",
+        host,
         "--port",
         str(port),
     ]
-    if host != "127.0.0.1":
-        command.extend(["--host", host])
     return command
 
 
@@ -135,11 +136,11 @@ def _web_command(host: str, port: str) -> list[str]:
         "run",
         "dev",
         "--",
+        "--host",
+        host,
         "--port",
         str(port),
     ]
-    if host != "127.0.0.1":
-        command.extend(["--host", host])
     return command
 
 
@@ -153,6 +154,16 @@ def _healthcheck_host(host: str) -> str:
     if host in {"0.0.0.0", "::"}:
         return "127.0.0.1"
     return host
+
+def _get_local_ip() -> str:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+    finally:
+        s.close()
+
+    return ip
 
 
 def _wait_for_backend_ready(host: str, port: str, process: subprocess.Popen, timeout_seconds: float = 20) -> bool:
@@ -223,12 +234,15 @@ def main() -> int:
     mode.add_argument("--backend-only", action="store_true", help="Start only the backend API.")
     mode.add_argument("--webapp-only", action="store_true", help="Start only the merchant web app.")
     mode.add_argument("--web-only", action="store_true", help="Start only the government web dashboard.")
-    parser.add_argument("--host", default="127.0.0.1", help="Backend host to bind. Default: 127.0.0.1")
+    
+    # 【修改處】將所有的 default="127.0.0.1" 改為 default="0.0.0.0"
+    parser.add_argument("--host", default="0.0.0.0", help="Backend host to bind. Default: 0.0.0.0")
     parser.add_argument("--port", default="8000", help="Backend port to bind. Default: 8000")
-    parser.add_argument("--webapp-host", default="127.0.0.1", help="Web app host to bind. Default: 127.0.0.1")
+    parser.add_argument("--webapp-host", default="0.0.0.0", help="Web app host to bind. Default: 0.0.0.0")
     parser.add_argument("--webapp-port", default="5173", help="Web app port to bind. Default: 5173")
-    parser.add_argument("--web-host", default="127.0.0.1", help="Government web host to bind. Default: 127.0.0.1")
+    parser.add_argument("--web-host", default="0.0.0.0", help="Government web host to bind. Default: 0.0.0.0")
     parser.add_argument("--web-port", default="5174", help="Government web port to bind. Default: 5174")
+    
     parser.add_argument("--no-reload", action="store_true", help="Disable uvicorn auto reload.")
     parser.add_argument("--seed", action="store_true", help="Seed demo stores and users before starting.")
     parser.add_argument("--no-seed", action="store_true", help="Skip seeding demo stores and users before starting.")
@@ -265,7 +279,12 @@ def main() -> int:
             return seed_result.returncode
 
     if start_webapp or start_web:
-        env["VITE_API_BASE_URL"] = f"http://{_healthcheck_host(args.host)}:{args.port}"
+        api_host = args.host
+
+        if api_host in {"0.0.0.0", "::"}:
+            api_host = _get_local_ip()
+
+        env["VITE_API_BASE_URL"] = f"http://{api_host}:{args.port}"
 
     if start_webapp:
         install_result = _install_webapp_dependencies(env, args.skip_webapp_install)
