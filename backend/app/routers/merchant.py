@@ -245,8 +245,8 @@ def create_qr_code(
     "/returns/scan",
     response_model=ReturnScanResponse,
     responses={
-        status.HTTP_404_NOT_FOUND: {"description": "QR value is not recognized"},
-        status.HTTP_409_CONFLICT: {"description": "This QR value has already been returned"},
+        status.HTTP_404_NOT_FOUND: {"description": "QR Code 無法辨識"},
+        status.HTTP_409_CONFLICT: {"description": "這張 QR Code 已全數歸還"},
     },
 )
 def scan_return(
@@ -271,7 +271,7 @@ def scan_return(
             )
         )
         db.commit()
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="QR value is not recognized")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="QR Code 無法辨識")
 
     remaining_count = _remaining(loan)
     if remaining_count <= 0 or loan.status == "returned":
@@ -287,7 +287,7 @@ def scan_return(
             )
         )
         db.commit()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This QR value has already been returned")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="這張 QR Code 已全數歸還")
 
     condition = ReturnCondition.normal
     note = None

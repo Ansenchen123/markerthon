@@ -1504,6 +1504,13 @@ h1 {
   font-weight: 900;
 }
 
+.empty-row td {
+  padding: 22px 12px;
+  color: #65707a;
+  font-weight: 800;
+  text-align: center;
+}
+
 .gov-error,
 .gov-loading {
   padding: 10px 12px;

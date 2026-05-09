@@ -103,7 +103,17 @@
         </table>
       </div>
     </section>
-  `}function nd(i){return`
+  `}function nd(i){const t=i.rankings.length?i.rankings.map(e=>`
+      <tr>
+        <td>${e.rank}</td>
+        <td>${e.storeName}</td>
+        <td>${e.region}</td>
+        <td>${B(e.issuedCount)}</td>
+        <td>${B(e.returnedCount)}</td>
+        <td>${B(e.remainingCount)}</td>
+        <td class="up">${ii(e.recoveryRate)}</td>
+      </tr>
+    `).join(""):'<tr class="empty-row"><td colspan="7">本月份尚無使用資料</td></tr>';return`
     <section class="panel table-panel">
       <div class="panel-head">
         <h2>循環容器使用 Top 10 商家 ${j("info")}</h2>
@@ -114,21 +124,11 @@
           <tr><th>排名</th><th>商家名稱</th><th>地區</th><th>借出</th><th>回收</th><th>未歸還</th><th>回收率</th></tr>
         </thead>
         <tbody>
-          ${i.rankings.map(t=>`
-            <tr>
-              <td>${t.rank}</td>
-              <td>${t.storeName}</td>
-              <td>${t.region}</td>
-              <td>${B(t.issuedCount)}</td>
-              <td>${B(t.returnedCount)}</td>
-              <td>${B(t.remainingCount)}</td>
-              <td class="up">${ii(t.recoveryRate)}</td>
-            </tr>
-          `).join("")}
+          ${t}
         </tbody>
       </table>
     </section>
-  `}function od(i,t){return`
+  `}function od(i,t){const e=i?t.rankings.slice(0,5):[];return`
     <section class="panel search-panel">
       <div class="panel-head">
         <h2>特定店家使用明細 ${j("info")}</h2>
@@ -138,9 +138,11 @@
         <input name="storeName" type="text" value="${ye}" placeholder="輸入店家名稱" />
         <button type="submit">查詢</button>
       </form>
-      <div class="chips">
-        ${t.rankings.slice(0,5).map(e=>`<button type="button" data-store-name="${e.storeName}">${e.storeName}</button>`).join("")}
-      </div>
+      ${e.length?`
+        <div class="chips" aria-label="目前排名店家快捷查詢">
+          ${e.map(s=>`<button type="button" data-store-name="${s.storeName}">${s.storeName}</button>`).join("")}
+        </div>
+      `:""}
       ${i?`
         <div class="store-result">
           <div class="store-icon">${j("cup")}</div>

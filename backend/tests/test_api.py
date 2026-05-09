@@ -130,6 +130,22 @@ def test_login_success_and_failure(context):
     assert invalid_email.status_code == 422
 
 
+def test_local_dev_cors_allows_vite_fallback_ports(context):
+    client, _ = context
+    origin = "http://127.0.0.1:5277"
+
+    response = client.options(
+        "/merchant/stats/sold?storeId=1&from=2026-05-05&to=2026-05-09",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+
+
 def test_register_and_login_accept_email_field_aliases(context):
     client, _ = context
 

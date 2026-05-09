@@ -16,11 +16,16 @@ export class ApiError extends Error {
 
 async function readErrorMessage(response: Response) {
   const fallbackMessages: Record<number, string> = {
-    401: 'Email or password is incorrect',
-    403: 'You do not have permission to access this API',
-    404: 'QR code was not found',
-    409: 'Email already exists or this QR code has already been returned',
-    422: 'Invalid input format',
+    401: 'Email 或密碼錯誤',
+    403: '沒有權限使用這個功能',
+    404: 'QR Code 無法辨識',
+    409: 'Email 已被使用，或這張 QR Code 已全數歸還',
+    422: '輸入格式不正確',
+  };
+  const localizedMessages: Record<string, string> = {
+    'Invalid email or password': 'Email 或密碼錯誤',
+    'QR value is not recognized': 'QR Code 無法辨識',
+    'This QR value has already been returned': '這張 QR Code 已全數歸還',
   };
 
   const contentType = response.headers.get('content-type') ?? '';
@@ -30,7 +35,7 @@ async function readErrorMessage(response: Response) {
     const detail = payload?.detail;
 
     if (typeof detail === 'string') {
-      return detail;
+      return localizedMessages[detail] ?? detail;
     }
 
     if (Array.isArray(detail) && detail.length > 0) {
@@ -39,7 +44,12 @@ async function readErrorMessage(response: Response) {
   }
 
   const message = await response.text().catch(() => '');
-  return message || fallbackMessages[response.status] || `API request failed: ${response.status}`;
+  return (
+    localizedMessages[message] ||
+    message ||
+    fallbackMessages[response.status] ||
+    `API 請求失敗：${response.status}`
+  );
 }
 
 export async function apiRequest<T>(

@@ -1622,15 +1622,21 @@ function GovernmentDashboard({
                 </tr>
               </thead>
               <tbody>
-                {topStores.map((item) => (
-                  <tr key={item.storeId}>
-                    <td>{item.rank}</td>
-                    <td>{item.storeName}</td>
-                    <td>{item.region}</td>
-                    <td>{item.issuedCount}</td>
-                    <td>{formatPercent(item.recoveryRate)}</td>
+                {topStores.length > 0 ? (
+                  topStores.map((item) => (
+                    <tr key={item.storeId}>
+                      <td>{item.rank}</td>
+                      <td>{item.storeName}</td>
+                      <td>{item.region}</td>
+                      <td>{item.issuedCount}</td>
+                      <td>{formatPercent(item.recoveryRate)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr className="empty-row">
+                    <td colSpan={5}>本月份尚無使用資料</td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </article>

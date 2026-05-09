@@ -700,6 +700,13 @@ th:first-child {
   font-weight: 900;
 }
 
+.empty-row td {
+  padding: 28px 16px;
+  color: #6e7c80;
+  font-weight: 800;
+  text-align: center;
+}
+
 .budget-cols {
   flex: 1;
   min-height: 0;

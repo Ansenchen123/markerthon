@@ -71,6 +71,6 @@ def register(payload: MerchantRegisterRequest, db: Session = Depends(get_db)) ->
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
     user = db.scalar(select(MerchantUser).where(MerchantUser.user_email == payload.user_email))
     if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email 或密碼錯誤")
 
     return _login_response(user)

@@ -175,6 +175,20 @@ function renderRegionCard(data: RegionDistribution) {
 }
 
 function renderTopStoresCard(data: TopStores) {
+  const rankingRows = data.rankings.length
+    ? data.rankings.map(store => `
+      <tr>
+        <td>${store.rank}</td>
+        <td>${store.storeName}</td>
+        <td>${store.region}</td>
+        <td>${formatNumber(store.issuedCount)}</td>
+        <td>${formatNumber(store.returnedCount)}</td>
+        <td>${formatNumber(store.remainingCount)}</td>
+        <td class="up">${formatPercent(store.recoveryRate)}</td>
+      </tr>
+    `).join('')
+    : '<tr class="empty-row"><td colspan="7">本月份尚無使用資料</td></tr>';
+
   return `
     <section class="panel table-panel">
       <div class="panel-head">
@@ -186,17 +200,7 @@ function renderTopStoresCard(data: TopStores) {
           <tr><th>排名</th><th>商家名稱</th><th>地區</th><th>借出</th><th>回收</th><th>未歸還</th><th>回收率</th></tr>
         </thead>
         <tbody>
-          ${data.rankings.map(store => `
-            <tr>
-              <td>${store.rank}</td>
-              <td>${store.storeName}</td>
-              <td>${store.region}</td>
-              <td>${formatNumber(store.issuedCount)}</td>
-              <td>${formatNumber(store.returnedCount)}</td>
-              <td>${formatNumber(store.remainingCount)}</td>
-              <td class="up">${formatPercent(store.recoveryRate)}</td>
-            </tr>
-          `).join('')}
+          ${rankingRows}
         </tbody>
       </table>
     </section>
@@ -204,6 +208,8 @@ function renderTopStoresCard(data: TopStores) {
 }
 
 function renderStoreCard(data: StoreDetail | null, stores: TopStores) {
+  const shortcutStores = data ? stores.rankings.slice(0, 5) : [];
+
   return `
     <section class="panel search-panel">
       <div class="panel-head">
@@ -214,9 +220,11 @@ function renderStoreCard(data: StoreDetail | null, stores: TopStores) {
         <input name="storeName" type="text" value="${selectedStoreName}" placeholder="輸入店家名稱" />
         <button type="submit">查詢</button>
       </form>
-      <div class="chips">
-        ${stores.rankings.slice(0, 5).map(store => `<button type="button" data-store-name="${store.storeName}">${store.storeName}</button>`).join('')}
-      </div>
+      ${shortcutStores.length ? `
+        <div class="chips" aria-label="目前排名店家快捷查詢">
+          ${shortcutStores.map(store => `<button type="button" data-store-name="${store.storeName}">${store.storeName}</button>`).join('')}
+        </div>
+      ` : ''}
       ${data ? `
         <div class="store-result">
           <div class="store-icon">${icon('cup')}</div>
