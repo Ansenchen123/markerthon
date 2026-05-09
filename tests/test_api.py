@@ -104,6 +104,30 @@ def test_login_success_and_failure(context):
     assert invalid_email.status_code == 422
 
 
+def test_register_and_login_accept_email_field_aliases(context):
+    client, _ = context
+
+    register = client.post(
+        "/auth/register",
+        json={"userEmail": "123@gmail.com", "password": "12345678", "storeName": "登入測試店"},
+    )
+    assert register.status_code == 201
+
+    login_lowercase_alias = client.post("/auth/login", json={"useremail": "123@gmail.com", "password": "12345678"})
+    assert login_lowercase_alias.status_code == 200
+    assert login_lowercase_alias.json()["store"]["name"] == "登入測試店"
+
+    login_old_alias = client.post("/auth/login", json={"username": "123@gmail.com", "password": "12345678"})
+    assert login_old_alias.status_code == 200
+
+    register_lowercase_alias = client.post(
+        "/auth/register",
+        json={"useremail": "alias-register@example.com", "password": "12345678", "storeName": "登入測試店"},
+    )
+    assert register_lowercase_alias.status_code == 201
+    assert register_lowercase_alias.json()["store"]["code"] == register.json()["store"]["code"]
+
+
 def test_merchant_register_creates_store_user_and_token(context):
     client, _ = context
 

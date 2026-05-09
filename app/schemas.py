@@ -3,7 +3,21 @@ from enum import Enum
 import re
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+def _normalize_user_email_alias(data):
+    if not isinstance(data, dict):
+        return data
+    if "userEmail" in data or "user_email" in data:
+        return data
+
+    normalized = dict(data)
+    for alias in ("useremail", "email", "username"):
+        if alias in normalized:
+            normalized["userEmail"] = normalized[alias]
+            break
+    return normalized
 
 
 class APIModel(BaseModel):
@@ -26,6 +40,11 @@ class LoginRequest(APIModel):
     user_email: str = Field(alias="userEmail", min_length=3, max_length=255)
     password: str
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_user_email_alias(cls, data):
+        return _normalize_user_email_alias(data)
+
     @field_validator("user_email")
     @classmethod
     def validate_user_email(cls, value: str) -> str:
@@ -40,6 +59,11 @@ class MerchantRegisterRequest(APIModel):
     password: str = Field(min_length=8, max_length=128)
     store_name: str = Field(alias="storeName", min_length=1, max_length=120)
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_user_email_alias(cls, data):
+        return _normalize_user_email_alias(data)
+
     @field_validator("user_email")
     @classmethod
     def validate_user_email(cls, value: str) -> str:
@@ -49,6 +73,11 @@ class MerchantRegisterRequest(APIModel):
 class GovernmentRegisterRequest(APIModel):
     user_email: str = Field(alias="userEmail", min_length=3, max_length=255)
     password: str = Field(min_length=8, max_length=128)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_user_email_alias(cls, data):
+        return _normalize_user_email_alias(data)
 
     @field_validator("user_email")
     @classmethod

@@ -70,6 +70,7 @@ Authorization: Bearer <accessToken>
 ### POST `/auth/register`
 
 商家註冊，會同時建立店家資料與商家帳號。`storeCode` 由後端自動產生，前端不需要傳。若 `storeName` 已存在，新的 `userEmail` 會綁到同一家店；`userEmail` 全系統唯一。註冊成功後直接回傳 JWT。
+建議欄位使用 `userEmail`；後端也接受 `useremail`、`email`、`username` 作為輸入別名。
 
 Request:
 
@@ -105,6 +106,7 @@ Failure:
 ### POST `/auth/login`
 
 商家登入，成功後回傳 JWT 與商家資料。
+建議欄位使用 `userEmail`；為了相容前端大小寫與舊版欄位，後端也接受 `useremail`、`email`、`username` 作為輸入別名。
 
 Request:
 
