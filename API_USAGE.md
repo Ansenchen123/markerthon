@@ -242,6 +242,16 @@ Response `200` for normal in-time return:
 }
 ```
 
+`status` 是這張 QR/發票容器批次的目前狀態，不是單次掃描事件結果：
+
+| Value | Meaning |
+|---|---|
+| `active` | 還沒有任何回收 |
+| `partial_returned` | 已回收一部分，但 `remainingCupCount` 還大於 0 |
+| `returned` | 這張 QR 的數量已全數回收 |
+
+單次掃描是否正常、逾期或異常請看 `refundReason`、`isExpired`、`isAbnormal`。內部稽核用的單次掃描結果會寫進 `scan_events.result`，例如 `returned`、`returned_no_refund`、`duplicate_scan`、`invalid_qr`。
+
 Response `200` for expired or abnormal return:
 
 ```json
@@ -312,11 +322,11 @@ Response `200`:
 }
 ```
 
-DB read:
+CSV read:
 
-| Table | Filter |
+| Source | Filter |
 |---|---|
-| `loans` | `issued_store_id = current_store_id` and `issued_at` between `from` and `to` |
+| `daily_report_YYYY-MM-DD.csv` | `eventType = sold`、`storeId = current_store_id`、`occurredAt` between `from` and `to` |
 
 ### 4. GET `/merchant/stats/recovered`
 
@@ -353,11 +363,11 @@ Response `200`:
 }
 ```
 
-DB read:
+CSV read:
 
-| Table | Filter |
+| Source | Filter |
 |---|---|
-| `loans` | `returned_store_id = current_store_id` and `returned_at` between `from` and `to` |
+| `daily_report_YYYY-MM-DD.csv` | `eventType = recovered`、`storeId = current_store_id`、`occurredAt` between `from` and `to` |
 
 ## cURL 全流程範例
 
@@ -780,6 +790,6 @@ daily_report_YYYY-MM-DD.csv
 - 時間以 `Asia/Taipei` 計算 3 天歸還期限，SQLite 內存 naive datetime。
 - `qrValue` 使用 `發票代號|商家代號|容器類型`；同一店家同一張發票同一容器類型只有一個 QR。
 - DB 保存 `cup_count`、`returned_count` 與 SHA-256 `qr_token_hash`，不保存明文 `qrValue`。
-- 每日統計不再用 DB table；後端以每日 CSV append log 控制資料量，政府端 daily API 會讀 CSV 聚合。
+- 每日統計不再用 DB table；後端以每日 CSV append log 控制資料量，商家統計 API 與政府端 daily API 會讀 CSV 聚合。
 - 第一版不串真實金流，只保存 `refund_ledgers` 作為後端退押帳本。
 - 第一版不追蹤單一實體容器 ID。

@@ -442,17 +442,24 @@ def test_expired_and_damaged_returns_are_recovered_without_refund(context):
 
 
 def test_merchant_stats_are_scoped_to_current_store(context):
-    client, _ = context
+    client, SessionLocal = context
     tea_headers = login_headers(client, "tea.owner@example.com")
     bento_headers = login_headers(client, "bento.owner@example.com")
 
     tea_qr = create_qr(client, tea_headers, "STAT-001")
-    create_qr(client, tea_headers, "STAT-002")
+    second_tea_qr = create_qr(client, tea_headers, "STAT-002")
     client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
         json={"qrValue": tea_qr["qrValue"], "condition": "normal"},
     )
+
+    with SessionLocal() as db:
+        first_loan = db.get(Loan, tea_qr["loanId"])
+        second_loan = db.get(Loan, second_tea_qr["loanId"])
+        first_loan.returned_count = 42
+        second_loan.cup_count = 99
+        db.commit()
 
     params = stats_range()
     tea_sold = client.get("/merchant/stats/sold", headers=tea_headers, params=params)

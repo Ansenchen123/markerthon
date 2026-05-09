@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.daily_reports import append_recovered_report_row, append_sold_report_row
+from app.daily_reports import append_recovered_report_row, append_sold_report_row, read_report_rows
 from app.models import Loan, MerchantUser, RefundLedger, ScanEvent
 from app.schemas import (
     ContainerType,
@@ -37,6 +37,37 @@ def _refund_reason(is_expired: bool, condition: ReturnCondition) -> str:
     if condition != ReturnCondition.normal:
         reasons.append(condition.value)
     return ",".join(reasons) if reasons else "normal"
+
+
+def _row_count(row: dict[str, str]) -> int:
+    return int(row.get("cupCount") or 0)
+
+
+def _row_bool(row: dict[str, str], key: str) -> bool:
+    return (row.get(key) or "").strip().lower() == "true"
+
+
+def _merchant_report_rows(
+    *,
+    event_type: str,
+    store_id: int,
+    from_at: datetime,
+    to_at: datetime,
+    container_type: Optional[ContainerType],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for row in read_report_rows(from_at.date(), to_at.date()):
+        if row.get("eventType") != event_type:
+            continue
+        if int(row.get("storeId") or 0) != store_id:
+            continue
+        if container_type is not None and row.get("containerType") != container_type.value:
+            continue
+
+        occurred_at = datetime.fromisoformat(row["occurredAt"])
+        if from_at <= occurred_at <= to_at:
+            rows.append(row)
+    return rows
 
 
 @router.post("/qr-codes", response_model=QRCodeResponse, status_code=status.HTTP_201_CREATED)
@@ -226,27 +257,25 @@ def get_sold_stats(
     from_at: datetime = Query(..., alias="from"),
     to_at: datetime = Query(..., alias="to"),
     container_type: Optional[ContainerType] = Query(default=None, alias="containerType"),
-    db: Session = Depends(get_db),
     current_user: MerchantUser = Depends(get_current_user),
 ) -> MerchantSoldStatsResponse:
     from_at = normalize_taipei(from_at)
     to_at = normalize_taipei(to_at)
-    statement = select(Loan).where(
-        Loan.issued_store_id == current_user.store_id,
-        Loan.issued_at >= from_at,
-        Loan.issued_at <= to_at,
+    rows = _merchant_report_rows(
+        event_type="sold",
+        store_id=current_user.store_id,
+        from_at=from_at,
+        to_at=to_at,
+        container_type=container_type,
     )
-    if container_type is not None:
-        statement = statement.where(Loan.container_type == container_type.value)
-    loans = list(db.scalars(statement))
 
     return MerchantSoldStatsResponse(
         storeId=current_user.store_id,
         **{"from": from_at, "to": to_at},
         containerType=container_type.value if container_type else None,
-        totalCount=sum(loan.cup_count for loan in loans),
-        cupCount=sum(loan.cup_count for loan in loans if loan.container_type == ContainerType.cup.value),
-        mealBoxCount=sum(loan.cup_count for loan in loans if loan.container_type == ContainerType.meal_box.value),
+        totalCount=sum(_row_count(row) for row in rows),
+        cupCount=sum(_row_count(row) for row in rows if row["containerType"] == ContainerType.cup.value),
+        mealBoxCount=sum(_row_count(row) for row in rows if row["containerType"] == ContainerType.meal_box.value),
     )
 
 
@@ -255,36 +284,27 @@ def get_recovered_stats(
     from_at: datetime = Query(..., alias="from"),
     to_at: datetime = Query(..., alias="to"),
     container_type: Optional[ContainerType] = Query(default=None, alias="containerType"),
-    db: Session = Depends(get_db),
     current_user: MerchantUser = Depends(get_current_user),
 ) -> MerchantRecoveredStatsResponse:
     from_at = normalize_taipei(from_at)
     to_at = normalize_taipei(to_at)
-    statement = select(Loan).where(
-        Loan.returned_store_id == current_user.store_id,
-        Loan.returned_at >= from_at,
-        Loan.returned_at <= to_at,
+    rows = _merchant_report_rows(
+        event_type="recovered",
+        store_id=current_user.store_id,
+        from_at=from_at,
+        to_at=to_at,
+        container_type=container_type,
     )
-    if container_type is not None:
-        statement = statement.where(Loan.container_type == container_type.value)
-    loans = list(db.scalars(statement))
 
-    normal_count = sum(
-        loan.returned_count
-        for loan in loans
-        if loan.return_condition == ReturnCondition.normal.value and loan.returned_at <= loan.due_at
-    )
-    expired_count = sum(loan.returned_count for loan in loans if loan.returned_at > loan.due_at)
-    abnormal_count = sum(
-        loan.returned_count for loan in loans if loan.return_condition and loan.return_condition != ReturnCondition.normal.value
-    )
     return MerchantRecoveredStatsResponse(
         storeId=current_user.store_id,
         **{"from": from_at, "to": to_at},
         containerType=container_type.value if container_type else None,
-        totalCount=sum(loan.returned_count for loan in loans),
-        normalCount=normal_count,
-        expiredCount=expired_count,
-        abnormalCount=abnormal_count,
-        crossStoreCount=sum(loan.returned_count for loan in loans if loan.issued_store_id != loan.returned_store_id),
+        totalCount=sum(_row_count(row) for row in rows),
+        normalCount=sum(
+            _row_count(row) for row in rows if not _row_bool(row, "isExpired") and not _row_bool(row, "isAbnormal")
+        ),
+        expiredCount=sum(_row_count(row) for row in rows if _row_bool(row, "isExpired")),
+        abnormalCount=sum(_row_count(row) for row in rows if _row_bool(row, "isAbnormal")),
+        crossStoreCount=sum(_row_count(row) for row in rows if _row_bool(row, "isCrossStore")),
     )

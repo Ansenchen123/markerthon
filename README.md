@@ -55,4 +55,4 @@ Example: `INV-20260509-001|tea-shop|cup`.
 
 Each invoice has one QR code per store and container type. `POST /merchant/qr-codes` accepts `invoiceCode`, `containerType`, and `cupCount`; repeated calls for the same store, invoice, and container type reuse the same QR value and increase the backend count. If the same invoice contains both cups and meal boxes, each container type gets its own QR value. Each scan return decreases that QR's backend remaining count by one container.
 
-Daily sold and recovered reports are append-only CSV logs. Each successful QR creation appends a `sold` row, and each successful scan return appends a `recovered` row to that day's CSV file.
+Daily sold and recovered reports are append-only CSV logs. Each successful QR creation appends a `sold` row, and each successful scan return appends a `recovered` row to that day's CSV file. Merchant stats APIs and government daily APIs aggregate these CSV logs.
