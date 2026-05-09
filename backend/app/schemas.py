@@ -172,9 +172,10 @@ class MerchantSoldStatsRow(APIModel):
 
 
 class MerchantSoldStatsResponse(APIModel):
-    store_id: int = Field(alias="storeId")
+    store_name: str = Field(alias="storeName")
     from_date: date = Field(alias="from")
     to_date: date = Field(alias="to")
+    remaining_count: int = Field(alias="remainingCount")
     rows: list[MerchantSoldStatsRow]
 
 
@@ -189,7 +190,7 @@ class MerchantRecoveredStatsRow(APIModel):
 
 
 class MerchantRecoveredStatsResponse(APIModel):
-    store_id: int = Field(alias="storeId")
+    store_name: str = Field(alias="storeName")
     from_date: date = Field(alias="from")
     to_date: date = Field(alias="to")
     rows: list[MerchantRecoveredStatsRow]
@@ -235,7 +236,7 @@ class GovernmentWebRegionDistributionResponse(APIModel):
     regions: list[GovernmentWebRegionDistributionRow]
 
 
-class GovernmentWebCupUsageRankingRow(APIModel):
+class GovernmentWebUsageRankingRow(APIModel):
     rank: int
     store_id: int = Field(alias="storeId")
     store_code: str = Field(alias="storeCode")
@@ -247,12 +248,11 @@ class GovernmentWebCupUsageRankingRow(APIModel):
     recovery_rate: float = Field(alias="recoveryRate")
 
 
-class GovernmentWebCupUsageRankingResponse(APIModel):
+class GovernmentWebUsageRankingResponse(APIModel):
     month: str
     from_at: datetime = Field(alias="from")
     to_at: datetime = Field(alias="to")
-    category: CategoryLabel
-    rankings: list[GovernmentWebCupUsageRankingRow]
+    rankings: list[GovernmentWebUsageRankingRow]
 
 
 class GovernmentWebStoreProfile(APIModel):

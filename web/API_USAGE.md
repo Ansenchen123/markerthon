@@ -164,9 +164,9 @@ Response `200`:
 }
 ```
 
-## GET `/government/web/top-cup-stores`
+## GET `/government/web/top-stores`
 
-本月環保杯使用 Top 排名，只統計 `category = cup`。
+本月循環容器使用 Top 排名，統計所有分類標籤合計。
 
 Query:
 
@@ -183,7 +183,6 @@ Response `200`:
   "month": "2026-05",
   "from": "2026-05-01T00:00:00",
   "to": "2026-05-31T23:59:59.999999",
-  "category": "cup",
   "rankings": [
     {
       "rank": 1,
@@ -191,10 +190,10 @@ Response `200`:
       "storeCode": "tea-shop",
       "storeName": "青山茶飲",
       "region": "台北市大安區",
-      "issuedCount": 4,
-      "returnedCount": 1,
-      "remainingCount": 3,
-      "recoveryRate": 0.25
+      "issuedCount": 6,
+      "returnedCount": 2,
+      "remainingCount": 4,
+      "recoveryRate": 0.3333
     }
   ]
 }

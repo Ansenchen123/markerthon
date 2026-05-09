@@ -156,7 +156,7 @@ function createDashboardStats(
   return {
     soldTotal,
     recoveredTotal,
-    activeTotal: Math.max(0, soldTotal - recoveredTotal),
+    activeTotal: sold?.remainingCount ?? 0,
     dailyRows: soldRows.map((soldRow) => {
       const recoveredRow = recoveredByDate.get(soldRow.statDate);
 
@@ -274,7 +274,7 @@ export function App() {
   };
 
   const loadMerchantStats = async () => {
-    if (!accessToken || store.id <= 0) {
+    if (!accessToken || !store.name) {
       return;
     }
 
@@ -283,8 +283,8 @@ export function App() {
 
     try {
       const [sold, recovered] = await Promise.all([
-        api.stats.sold({ storeId: store.id, ...range }, accessToken),
-        api.stats.recovered({ storeId: store.id, ...range }, accessToken),
+        api.stats.sold({ storeName: store.name, ...range }, accessToken),
+        api.stats.recovered({ storeName: store.name, ...range }, accessToken),
       ]);
 
       setStatsState({

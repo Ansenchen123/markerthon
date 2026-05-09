@@ -57,7 +57,7 @@ Default daily CSV report path: `data/daily_reports/daily_report_YYYY-MM-DD.csv`.
 - `GET /government/web/monthly-usage`
 - `GET /government/web/enterprise-counts`
 - `GET /government/web/region-distribution`
-- `GET /government/web/top-cup-stores`
+- `GET /government/web/top-stores`
 - `GET /government/web/stores/{storeId}`
 
 The QR value returned by `/merchant/qr-codes` is a one-time loan credential formatted as:
@@ -70,4 +70,4 @@ Example: `INV-20260509-001|tea-shop|cup`.
 
 Each invoice has one QR code per store and category label. `POST /merchant/qr-codes` accepts `invoiceCode`, `category`, and `count`; repeated calls for the same store, invoice, and category reuse the same QR value and increase the backend count. If the same invoice contains both cups and meal boxes, each category gets its own QR value. Each scan return decreases that QR's backend remaining count by one container.
 
-Daily sold and recovered reports are append-only CSV logs. Each successful QR creation appends a `sold` row, and each successful scan return appends a `recovered` row to that day's CSV file. Merchant stats APIs require `storeId`, verify it matches the merchant JWT, aggregate these CSV logs by date, return one row per requested day, and expose per-category counts through `categoryCounts`. Government web APIs use the database to provide the current monthly dashboard and store status. In `loans`, `item_count` keeps the cumulative issued total, while `remaining_count` is decremented by one on every successful return scan.
+Daily sold and recovered reports are append-only CSV logs. Each successful QR creation appends a `sold` row, and each successful scan return appends a `recovered` row to that day's CSV file. Merchant stats APIs require `storeName`, verify it matches the merchant JWT, aggregate these CSV logs by date, return one row per requested day, and expose per-category counts through `categoryCounts`. Merchant sold stats also return the current `remainingCount` from `loans.remaining_count`, because "issued by this store but not yet returned" is not the same as "issued by this store minus scanned by this store" when cross-store returns exist. Government web APIs use the database to provide the current monthly dashboard and store status. In `loans`, `item_count` keeps the cumulative issued total, while `remaining_count` is decremented by one on every successful return scan.

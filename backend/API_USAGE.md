@@ -285,20 +285,20 @@ DB changes on accepted return:
 
 ### 3. GET `/merchant/stats/sold`
 
-查詢指定商家在日期區間內每天賣出多少循環容器。`storeId` 必須等於登入商家 JWT 所屬店家；若傳入其他商家會回 `403`。商家端不提供分類 filter；後端會一次回傳全部分類，並在每天的 row 裡用 `categoryCounts` 列出各分類數量。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
+查詢指定商家在日期區間內每天賣出多少循環容器。`storeName` 必須等於登入商家 JWT 所屬店名；若傳入其他商家會回 `403`。商家端不提供分類 filter；後端會一次回傳全部分類，並在每天的 row 裡用 `categoryCounts` 列出各分類數量。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
 
 Query params:
 
 | Name | Required | Example |
 |---|---|---|
-| `storeId` | yes | `1` |
+| `storeName` | yes | `青山茶飲` |
 | `from` | yes | `2026-05-08` |
 | `to` | yes | `2026-05-10` |
 
 Example:
 
 ```http
-GET /merchant/stats/sold?storeId=1&from=2026-05-08&to=2026-05-10
+GET /merchant/stats/sold?storeName=青山茶飲&from=2026-05-08&to=2026-05-10
 Authorization: Bearer <accessToken>
 ```
 
@@ -306,9 +306,10 @@ Response `200`:
 
 ```json
 {
-  "storeId": 1,
+  "storeName": "青山茶飲",
   "from": "2026-05-08",
   "to": "2026-05-10",
+  "remainingCount": 1,
   "rows": [
     {
       "statDate": "2026-05-08",
@@ -360,24 +361,24 @@ CSV read:
 
 | Source | Filter |
 |---|---|
-| `daily_report_YYYY-MM-DD.csv` | `eventType = sold`、`storeId = query storeId`、`occurredAt` date between `from` and `to` |
+| `daily_report_YYYY-MM-DD.csv` | `eventType = sold`、`storeId = authenticated merchant store id`、`occurredAt` date between `from` and `to` |
 
 ### 4. GET `/merchant/stats/recovered`
 
-查詢指定商家在日期區間內每天回收多少循環容器。`storeId` 必須等於登入商家 JWT 所屬店家；若傳入其他商家會回 `403`。商家端不提供分類 filter；後端會一次回傳全部分類，並在每天的 row 裡列出總數、`categoryCounts` 與回收狀態分項。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
+查詢指定商家在日期區間內每天回收多少循環容器。`storeName` 必須等於登入商家 JWT 所屬店名；若傳入其他商家會回 `403`。商家端不提供分類 filter；後端會一次回傳全部分類，並在每天的 row 裡列出總數、`categoryCounts` 與回收狀態分項。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
 
 Query params:
 
 | Name | Required | Example |
 |---|---|---|
-| `storeId` | yes | `1` |
+| `storeName` | yes | `青山茶飲` |
 | `from` | yes | `2026-05-08` |
 | `to` | yes | `2026-05-10` |
 
 Example:
 
 ```http
-GET /merchant/stats/recovered?storeId=1&from=2026-05-08&to=2026-05-10
+GET /merchant/stats/recovered?storeName=青山茶飲&from=2026-05-08&to=2026-05-10
 Authorization: Bearer <accessToken>
 ```
 
@@ -385,7 +386,7 @@ Response `200`:
 
 ```json
 {
-  "storeId": 1,
+  "storeName": "青山茶飲",
   "from": "2026-05-08",
   "to": "2026-05-10",
   "rows": [
@@ -451,7 +452,7 @@ CSV read:
 
 | Source | Filter |
 |---|---|
-| `daily_report_YYYY-MM-DD.csv` | `eventType = recovered`、`storeId = query storeId`、`occurredAt` date between `from` and `to` |
+| `daily_report_YYYY-MM-DD.csv` | `eventType = recovered`、`storeId = authenticated merchant store id`、`occurredAt` date between `from` and `to` |
 
 ## cURL 全流程範例
 
@@ -472,10 +473,10 @@ curl -s -X POST http://127.0.0.1:8000/merchant/returns/scan \
   -H 'Content-Type: application/json' \
   -d "{\"qrValue\":\"$QR_VALUE\"}"
 
-curl -s "http://127.0.0.1:8000/merchant/stats/sold?storeId=1&from=2026-05-08&to=2026-05-10" \
+curl -s "http://127.0.0.1:8000/merchant/stats/sold?storeName=青山茶飲&from=2026-05-08&to=2026-05-10" \
   -H "Authorization: Bearer $TOKEN"
 
-curl -s "http://127.0.0.1:8000/merchant/stats/recovered?storeId=1&from=2026-05-08&to=2026-05-10" \
+curl -s "http://127.0.0.1:8000/merchant/stats/recovered?storeName=青山茶飲&from=2026-05-08&to=2026-05-10" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -625,9 +626,9 @@ Response `200`:
 }
 ```
 
-### GET `/government/web/top-cup-stores`
+### GET `/government/web/top-stores`
 
-本月環保杯使用 Top 排名。只統計 `category = cup`。
+本月循環容器使用 Top 排名。統計所有分類標籤合計，例如 `cup` 與 `meal_box` 都會納入 `issuedCount`、`returnedCount` 與 `remainingCount`。
 
 Query params:
 
@@ -644,7 +645,6 @@ Response `200`:
   "month": "2026-05",
   "from": "2026-05-01T00:00:00",
   "to": "2026-05-31T23:59:59.999999",
-  "category": "cup",
   "rankings": [
     {
       "rank": 1,
@@ -652,10 +652,10 @@ Response `200`:
       "storeCode": "tea-shop",
       "storeName": "青山茶飲",
       "region": "台北市大安區",
-      "issuedCount": 4,
-      "returnedCount": 1,
-      "remainingCount": 3,
-      "recoveryRate": 0.25
+      "issuedCount": 6,
+      "returnedCount": 2,
+      "remainingCount": 4,
+      "recoveryRate": 0.3333
     }
   ]
 }
@@ -782,6 +782,6 @@ daily_report_YYYY-MM-DD.csv
 - 時間以 `Asia/Taipei` 計算 3 天歸還期限，SQLite 內存 naive datetime。
 - `qrValue` 使用 `發票代號|商家代號|分類標籤`；同一店家同一張發票同一分類標籤只有一個 QR。
 - DB 保存 `item_count`、`returned_count`、`remaining_count` 與 SHA-256 `qr_token_hash`，不保存明文 `qrValue`。`item_count` 是累計借出總量，歸還時不會下降；`remaining_count` 是實際未歸還量，掃描成功一次會扣 1。
-- 每日統計不再用 DB table；後端以每日 CSV append log 控制資料量，商家統計 API 會讀 CSV 聚合。政府端 web API 讀目前資料庫彙總本月使用情況與店家狀態。商家統計 API 不提供分類 filter，會在每日 row 中回傳 `categoryCounts`。
+- 每日統計不再用 DB table；後端以每日 CSV append log 控制資料量，商家統計 API 會讀 CSV 聚合借出與回收事件。`remainingCount` 是目前未歸還快照，來自資料庫 `loans.remaining_count`，避免用「自己借出 - 自己掃回」誤算跨店回收。政府端 web API 讀目前資料庫彙總本月使用情況與店家狀態。商家統計 API 不提供分類 filter，會在每日 row 中回傳 `categoryCounts`。
 - 第一版不串真實金流，只保存 `refund_ledgers` 作為後端退押帳本。
 - 第一版不追蹤單一實體容器 ID。

@@ -61,6 +61,7 @@ def _merchant_session(client: TestClient, user_email: str) -> dict[str, Any]:
     return {
         "headers": {"Authorization": f"Bearer {body['accessToken']}"},
         "storeId": body["store"]["id"],
+        "storeName": body["store"]["name"],
     }
 
 
@@ -84,7 +85,7 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
     start_date = today - timedelta(days=days - 1)
     merchant_sessions = {key: _merchant_session(client, email) for key, email in MERCHANT_EMAILS.items()}
     merchant_headers = {key: session["headers"] for key, session in merchant_sessions.items()}
-    merchant_store_ids = {key: session["storeId"] for key, session in merchant_sessions.items()}
+    merchant_store_names = {key: session["storeName"] for key, session in merchant_sessions.items()}
     government_headers = _login(client, "gov.admin@example.com", path="/government/auth/login")
     created_batches: list[dict[str, Any]] = []
 
@@ -184,8 +185,8 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
         client.get("/government/web/monthly-usage", headers=government_headers, params=month_query),
         200,
     )
-    top_cup_stores = _request_json(
-        client.get("/government/web/top-cup-stores", headers=government_headers, params=month_query),
+    top_stores = _request_json(
+        client.get("/government/web/top-stores", headers=government_headers, params=month_query),
         200,
     )
     merchant_sold = _request_json(
@@ -193,7 +194,7 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
             "/merchant/stats/sold",
             headers=merchant_headers["tea"],
             params={
-                "storeId": merchant_store_ids["tea"],
+                "storeName": merchant_store_names["tea"],
                 "from": start_date.isoformat(),
                 "to": today.isoformat(),
             },
@@ -207,7 +208,7 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
         "createdBatches": len(created_batches),
         "monthlyIssuedCount": monthly_usage["issuedCount"],
         "monthlyReturnedCount": monthly_usage["returnedCount"],
-        "topCupStoreRows": len(top_cup_stores["rankings"]),
+        "topStoreRows": len(top_stores["rankings"]),
         "teaMerchantSold": sum(row["totalCount"] for row in merchant_sold["rows"]),
     }
 
@@ -236,7 +237,7 @@ def main() -> None:
     print(f"CSV recovered rows: {len(recovered_rows)}")
     print(f"Government monthly issued count from API: {result['monthlyIssuedCount']}")
     print(f"Government monthly returned count from API: {result['monthlyReturnedCount']}")
-    print(f"Government cup ranking rows from API: {result['topCupStoreRows']}")
+    print(f"Government ranking rows from API: {result['topStoreRows']}")
     print(f"Tea merchant sold count from API: {result['teaMerchantSold']}")
     print("CSV reports:")
     for path in report_paths:

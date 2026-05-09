@@ -12,8 +12,6 @@ from app.schemas import (
     GovernmentLoginResponse,
     GovernmentRegisterRequest,
     GovernmentUserResponse,
-    GovernmentWebCupUsageRankingResponse,
-    GovernmentWebCupUsageRankingRow,
     GovernmentWebDailyUsageRow,
     GovernmentWebEnterpriseCountsResponse,
     GovernmentWebMonthlyUsageResponse,
@@ -21,6 +19,8 @@ from app.schemas import (
     GovernmentWebRegionDistributionRow,
     GovernmentWebStoreProfile,
     GovernmentWebStoreStatusResponse,
+    GovernmentWebUsageRankingResponse,
+    GovernmentWebUsageRankingRow,
     LoginRequest,
 )
 from app.security import create_access_token, get_current_government_user, hash_password, verify_password
@@ -201,39 +201,35 @@ def get_government_web_region_distribution(
     )
 
 
-@router.get("/web/top-cup-stores", response_model=GovernmentWebCupUsageRankingResponse)
-def get_government_web_top_cup_stores(
+@router.get("/web/top-stores", response_model=GovernmentWebUsageRankingResponse)
+def get_government_web_top_stores(
     year: Optional[int] = Query(default=None, ge=2000, le=2100),
     month: Optional[int] = Query(default=None, ge=1, le=12),
     limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db),
     _: GovernmentUser = Depends(get_current_government_user),
-) -> GovernmentWebCupUsageRankingResponse:
+) -> GovernmentWebUsageRankingResponse:
     month_label, start_at, next_month, inclusive_end = _month_bounds(year, month)
     stores = list(db.scalars(select(Store).order_by(Store.id)))
     loans = _monthly_loans(db, start_at, next_month)
 
     ranking_values = []
     for store in stores:
-        cup_loans = [
-            loan
-            for loan in loans
-            if loan.issued_store_id == store.id and loan.container_type == CategoryLabel.cup.value
-        ]
-        issued_count = sum(loan.item_count for loan in cup_loans)
+        store_loans = [loan for loan in loans if loan.issued_store_id == store.id]
+        issued_count = sum(loan.item_count for loan in store_loans)
         if issued_count == 0:
             continue
-        returned_count = sum(loan.returned_count for loan in cup_loans)
-        ranking_values.append((store, issued_count, returned_count))
+        returned_count = sum(loan.returned_count for loan in store_loans)
+        remaining_count = sum(_remaining(loan) for loan in store_loans)
+        ranking_values.append((store, issued_count, returned_count, remaining_count))
 
     ranking_values.sort(key=lambda item: (-item[1], item[0].id))
 
-    return GovernmentWebCupUsageRankingResponse(
+    return GovernmentWebUsageRankingResponse(
         month=month_label,
         **{"from": start_at, "to": inclusive_end},
-        category=CategoryLabel.cup,
         rankings=[
-            GovernmentWebCupUsageRankingRow(
+            GovernmentWebUsageRankingRow(
                 rank=index + 1,
                 storeId=store.id,
                 storeCode=store.code,
@@ -241,10 +237,10 @@ def get_government_web_top_cup_stores(
                 region=store.region,
                 issuedCount=issued_count,
                 returnedCount=returned_count,
-                remainingCount=sum(_remaining(loan) for loan in cup_loans),
+                remainingCount=remaining_count,
                 recoveryRate=_rate(returned_count, issued_count),
             )
-            for index, (store, issued_count, returned_count) in enumerate(ranking_values[:limit])
+            for index, (store, issued_count, returned_count, remaining_count) in enumerate(ranking_values[:limit])
         ],
     )
 

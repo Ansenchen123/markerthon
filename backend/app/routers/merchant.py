@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -46,8 +46,8 @@ def _refund_reason(is_expired: bool, condition: ReturnCondition) -> str:
     return ",".join(reasons) if reasons else "normal"
 
 
-def _ensure_store_scope(store_id: int, current_user: MerchantUser) -> None:
-    if store_id != current_user.store_id:
+def _ensure_store_scope(store_name: str, current_user: MerchantUser) -> None:
+    if store_name.strip() != current_user.store.name:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Store is not allowed for this merchant")
 
 
@@ -61,6 +61,22 @@ def _row_category(row: dict[str, str]) -> str:
 
 def _row_bool(row: dict[str, str], key: str) -> bool:
     return (row.get(key) or "").strip().lower() == "true"
+
+
+def _date_bounds(from_date: date, to_date: date) -> tuple[datetime, datetime]:
+    return datetime.combine(from_date, time.min), datetime.combine(to_date + timedelta(days=1), time.min)
+
+
+def _remaining_for_issued_between(db: Session, *, store_id: int, from_date: date, to_date: date) -> int:
+    start_at, end_at = _date_bounds(from_date, to_date)
+    loans = db.scalars(
+        select(Loan).where(
+            Loan.issued_store_id == store_id,
+            Loan.issued_at >= start_at,
+            Loan.issued_at < end_at,
+        )
+    )
+    return sum(_remaining(loan) for loan in loans)
 
 
 def _merchant_report_rows(
@@ -364,25 +380,37 @@ def scan_return(
     },
 )
 def get_sold_stats(
-    store_id: int = Query(..., alias="storeId"),
+    store_name: str = Query(..., alias="storeName", min_length=1),
     from_date: date = Query(..., alias="from"),
     to_date: date = Query(..., alias="to"),
+    db: Session = Depends(get_db),
     current_user: MerchantUser = Depends(get_current_user),
 ) -> MerchantSoldStatsResponse:
-    _ensure_store_scope(store_id, current_user)
+    _ensure_store_scope(store_name, current_user)
     if from_date > to_date:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from must be before or equal to to")
     rows = _merchant_report_rows(
         event_type="sold",
-        store_id=store_id,
+        store_id=current_user.store_id,
+        from_date=from_date,
+        to_date=to_date,
+    )
+    remaining_count = _remaining_for_issued_between(
+        db,
+        store_id=current_user.store_id,
         from_date=from_date,
         to_date=to_date,
     )
 
     return MerchantSoldStatsResponse(
-        storeId=store_id,
+        storeName=current_user.store.name,
         **{"from": from_date, "to": to_date},
-        rows=_sold_stat_rows(rows=rows, from_date=from_date, to_date=to_date),
+        remainingCount=remaining_count,
+        rows=_sold_stat_rows(
+            rows=rows,
+            from_date=from_date,
+            to_date=to_date,
+        ),
     )
 
 
@@ -395,23 +423,23 @@ def get_sold_stats(
     },
 )
 def get_recovered_stats(
-    store_id: int = Query(..., alias="storeId"),
+    store_name: str = Query(..., alias="storeName", min_length=1),
     from_date: date = Query(..., alias="from"),
     to_date: date = Query(..., alias="to"),
     current_user: MerchantUser = Depends(get_current_user),
 ) -> MerchantRecoveredStatsResponse:
-    _ensure_store_scope(store_id, current_user)
+    _ensure_store_scope(store_name, current_user)
     if from_date > to_date:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from must be before or equal to to")
     rows = _merchant_report_rows(
         event_type="recovered",
-        store_id=store_id,
+        store_id=current_user.store_id,
         from_date=from_date,
         to_date=to_date,
     )
 
     return MerchantRecoveredStatsResponse(
-        storeId=store_id,
+        storeName=current_user.store.name,
         **{"from": from_date, "to": to_date},
         rows=_recovered_stat_rows(rows=rows, from_date=from_date, to_date=to_date),
     )
