@@ -8,7 +8,17 @@ webapp/    商家端 Web App，待實作
 web/       政府端 Web，待實作
 ```
 
-後端開發請進入 `backend/`：
+從 repo 根目錄啟動後端：
+
+```bash
+python3 run.py --seed
+# or
+./run.py --seed
+```
+
+預設會啟動 `http://127.0.0.1:8000`，API 文件在 `http://127.0.0.1:8000/docs`。
+
+後端開發也可以進入 `backend/` 手動啟動：
 
 ```bash
 cd backend

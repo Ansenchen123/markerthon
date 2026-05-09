@@ -4,6 +4,16 @@ FastAPI + SQLite backend for the reusable cup / meal-box deposit return demo.
 
 ## Setup
 
+From the repository root, the least ambiguous way to start the backend is:
+
+```bash
+python3 run.py --seed
+# or
+./run.py --seed
+```
+
+Or start it manually from this `backend/` directory:
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
