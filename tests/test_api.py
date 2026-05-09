@@ -65,7 +65,7 @@ def create_qr_batch(client: TestClient, headers: dict[str, str], invoice: str = 
 
 
 def create_qr(client: TestClient, headers: dict[str, str], invoice: str = "INV-001") -> dict:
-    return create_qr_batch(client, headers, invoice=invoice, cup_count=1)["items"][0]
+    return create_qr_batch(client, headers, invoice=invoice, cup_count=1)
 
 
 def stats_range() -> dict[str, str]:
@@ -96,21 +96,16 @@ def test_create_qr_code_uses_cup_count_and_deposit_amounts(context):
 
     assert batch["invoiceCode"] == "CUP-001"
     assert batch["storeCode"] == "tea-shop"
-    assert batch["cupCount"] == 3
-    assert batch["startSequence"] == 1
-    assert batch["endSequence"] == 3
+    assert batch["addedCupCount"] == 3
+    assert batch["totalCupCount"] == 3
+    assert batch["returnedCount"] == 0
+    assert batch["remainingCupCount"] == 3
     assert batch["totalDepositAmount"] == 60
-    assert [item["invoiceSequence"] for item in batch["items"]] == [1, 2, 3]
-    assert [item["qrValue"] for item in batch["items"]] == [
-        "CUP-001|tea-shop|1",
-        "CUP-001|tea-shop|2",
-        "CUP-001|tea-shop|3",
-    ]
-    assert all(item["containerType"] == "cup" for item in batch["items"])
-    assert all(item["depositAmount"] == 20 for item in batch["items"])
+    assert batch["depositAmount"] == 20
+    assert batch["qrValue"] == "CUP-001|tea-shop"
 
 
-def test_invoice_sequence_resets_per_invoice_and_store(context):
+def test_invoice_qr_is_reused_and_count_accumulates_per_store(context):
     client, _ = context
     tea_headers = login_headers(client, "tea_owner")
     bento_headers = login_headers(client, "bento_owner")
@@ -120,23 +115,16 @@ def test_invoice_sequence_resets_per_invoice_and_store(context):
     other_invoice = create_qr_batch(client, tea_headers, invoice="OTHER-INVOICE", cup_count=1)
     other_store = create_qr_batch(client, bento_headers, invoice="SAME-INVOICE", cup_count=1)
 
-    assert first_batch["startSequence"] == 1
-    assert first_batch["endSequence"] == 3
-    assert [item["qrValue"] for item in first_batch["items"]] == [
-        "SAME-INVOICE|tea-shop|1",
-        "SAME-INVOICE|tea-shop|2",
-        "SAME-INVOICE|tea-shop|3",
-    ]
-    assert second_batch["startSequence"] == 4
-    assert second_batch["endSequence"] == 5
-    assert [item["qrValue"] for item in second_batch["items"]] == [
-        "SAME-INVOICE|tea-shop|4",
-        "SAME-INVOICE|tea-shop|5",
-    ]
-    assert other_invoice["startSequence"] == 1
-    assert other_invoice["items"][0]["qrValue"] == "OTHER-INVOICE|tea-shop|1"
-    assert other_store["startSequence"] == 1
-    assert other_store["items"][0]["qrValue"] == "SAME-INVOICE|bento-shop|1"
+    assert first_batch["qrValue"] == "SAME-INVOICE|tea-shop"
+    assert first_batch["addedCupCount"] == 3
+    assert first_batch["totalCupCount"] == 3
+    assert second_batch["qrValue"] == "SAME-INVOICE|tea-shop"
+    assert second_batch["addedCupCount"] == 2
+    assert second_batch["totalCupCount"] == 5
+    assert other_invoice["totalCupCount"] == 1
+    assert other_invoice["qrValue"] == "OTHER-INVOICE|tea-shop"
+    assert other_store["totalCupCount"] == 1
+    assert other_store["qrValue"] == "SAME-INVOICE|bento-shop"
 
 
 def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
@@ -148,7 +136,7 @@ def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
     returned = client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": qr["qrValue"], "condition": "normal"},
+        json={"qrValue": qr["qrValue"], "cupCount": 1, "condition": "normal"},
     )
     assert returned.status_code == 200
     assert returned.json()["refundAmount"] == 20
@@ -166,13 +154,59 @@ def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
     duplicate = client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": qr["qrValue"], "condition": "normal"},
+        json={"qrValue": qr["qrValue"], "cupCount": 1, "condition": "normal"},
     )
     assert duplicate.status_code == 409
 
     with SessionLocal() as db:
         duplicate_event = db.scalar(select(ScanEvent).where(ScanEvent.result == "duplicate_scan"))
         assert duplicate_event.reason == "already_returned"
+
+
+def test_invoice_qr_can_be_partially_returned_by_count(context):
+    client, SessionLocal = context
+    tea_headers = login_headers(client, "tea_owner")
+    bento_headers = login_headers(client, "bento_owner")
+    qr = create_qr_batch(client, tea_headers, "PARTIAL-001", cup_count=3)
+
+    first_return = client.post(
+        "/merchant/returns/scan",
+        headers=bento_headers,
+        json={"qrValue": qr["qrValue"], "cupCount": 2, "condition": "normal"},
+    )
+    assert first_return.status_code == 200
+    assert first_return.json()["status"] == "partial_returned"
+    assert first_return.json()["refundAmount"] == 40
+    assert first_return.json()["returnedCount"] == 2
+    assert first_return.json()["remainingCupCount"] == 1
+
+    too_many = client.post(
+        "/merchant/returns/scan",
+        headers=bento_headers,
+        json={"qrValue": qr["qrValue"], "cupCount": 2, "condition": "normal"},
+    )
+    assert too_many.status_code == 400
+
+    final_return = client.post(
+        "/merchant/returns/scan",
+        headers=bento_headers,
+        json={"qrValue": qr["qrValue"], "cupCount": 1, "condition": "normal"},
+    )
+    assert final_return.status_code == 200
+    assert final_return.json()["status"] == "returned"
+    assert final_return.json()["refundAmount"] == 20
+    assert final_return.json()["returnedCount"] == 3
+    assert final_return.json()["remainingCupCount"] == 0
+
+    with SessionLocal() as db:
+        loan = db.get(Loan, qr["loanId"])
+        assert loan.cup_count == 3
+        assert loan.returned_count == 3
+        assert loan.status == "returned"
+        ledger = db.scalar(select(RefundLedger).where(RefundLedger.loan_id == loan.id))
+        assert ledger.refund_amount == 60
+        exceeded_event = db.scalar(select(ScanEvent).where(ScanEvent.result == "return_count_exceeded"))
+        assert exceeded_event.reason == "return_count_exceeded"
 
 
 def test_invalid_qr_is_rejected_and_recorded(context):
@@ -182,7 +216,7 @@ def test_invalid_qr_is_rejected_and_recorded(context):
     response = client.post(
         "/merchant/returns/scan",
         headers=headers,
-        json={"qrValue": "not-a-real-token", "condition": "normal"},
+        json={"qrValue": "not-a-real-token", "cupCount": 1, "condition": "normal"},
     )
     assert response.status_code == 404
 
@@ -204,7 +238,7 @@ def test_expired_and_damaged_returns_are_recovered_without_refund(context):
     expired_return = client.post(
         "/merchant/returns/scan",
         headers=headers,
-        json={"qrValue": expired_qr["qrValue"], "condition": "normal", "note": "late return"},
+        json={"qrValue": expired_qr["qrValue"], "cupCount": 1, "condition": "normal", "note": "late return"},
     )
     assert expired_return.status_code == 200
     assert expired_return.json()["refundAmount"] == 0
@@ -214,7 +248,7 @@ def test_expired_and_damaged_returns_are_recovered_without_refund(context):
     damaged_return = client.post(
         "/merchant/returns/scan",
         headers=headers,
-        json={"qrValue": damaged_qr["qrValue"], "condition": "damaged", "note": "cracked lid"},
+        json={"qrValue": damaged_qr["qrValue"], "cupCount": 1, "condition": "damaged", "note": "cracked lid"},
     )
     assert damaged_return.status_code == 200
     assert damaged_return.json()["refundAmount"] == 0
@@ -231,7 +265,7 @@ def test_merchant_stats_are_scoped_to_current_store(context):
     client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
-        json={"qrValue": tea_qr["qrValue"], "condition": "normal"},
+        json={"qrValue": tea_qr["qrValue"], "cupCount": 1, "condition": "normal"},
     )
 
     params = stats_range()
@@ -261,7 +295,7 @@ def test_government_views_expose_overview_store_stats_and_abnormal_events(contex
     client.post(
         "/merchant/returns/scan",
         headers=headers,
-        json={"qrValue": qr["qrValue"], "condition": "polluted", "note": "sticky residue"},
+        json={"qrValue": qr["qrValue"], "cupCount": 1, "condition": "polluted", "note": "sticky residue"},
     )
 
     with SessionLocal() as db:

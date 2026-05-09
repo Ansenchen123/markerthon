@@ -75,24 +75,23 @@ Failure:
 
 ### 1. POST `/merchant/qr-codes`
 
-店家賣出循環杯時呼叫。店家只需要輸入發票號碼與杯數，後端會依「商家 + 發票」自動累加序號，為每一杯建立借出紀錄並回傳一組 `qrValue`；前端負責把每個 `qrValue` 生成 QR Code 圖。
+店家賣出循環杯時呼叫。店家只需要輸入發票號碼與杯數，後端會依「商家 + 發票」找到同一筆發票紀錄並累加 `cupCount`。同一張發票只會有一個 `qrValue`；前端只需要把這個 `qrValue` 生成一張 QR Code 圖。
 
 QR 代表本次借出憑證，不代表實體容器 ID。容器本身不綁定識別碼。
 
 `qrValue` 格式：
 
 ```text
-<invoiceCode>|<storeCode>|<invoiceSequence>
+<invoiceCode>|<storeCode>
 ```
 
-例如同一家店同一張發票有兩杯飲料，會產生：
+例如同一家店同一張發票有兩杯飲料，只會產生：
 
 ```text
-INV-20260509-001|tea-shop|1
-INV-20260509-001|tea-shop|2
+INV-20260509-001|tea-shop
 ```
 
-序號 `invoiceSequence` 會在同一店家、同一張發票內遞增；換另一張發票會重新從 1 開始。
+杯數差異由後端 `cupCount` / `returnedCount` / `remainingCupCount` 記錄，不在 QR 裡區分單杯。
 
 Request:
 
@@ -109,34 +108,18 @@ Response `201`:
 
 ```json
 {
+  "loanId": 1,
+  "qrValue": "INV-20260509-001|tea-shop",
   "invoiceCode": "INV-20260509-001",
   "storeCode": "tea-shop",
-  "cupCount": 2,
-  "startSequence": 1,
-  "endSequence": 2,
+  "addedCupCount": 2,
+  "totalCupCount": 2,
+  "returnedCount": 0,
+  "remainingCupCount": 2,
+  "depositAmount": 20,
   "totalDepositAmount": 40,
-  "items": [
-    {
-      "loanId": 1,
-      "qrValue": "INV-20260509-001|tea-shop|1",
-      "containerType": "cup",
-      "invoiceCode": "INV-20260509-001",
-      "invoiceSequence": 1,
-      "depositAmount": 20,
-      "issuedAt": "2026-05-09T12:05:32.062579",
-      "dueAt": "2026-05-12T12:05:32.062579"
-    },
-    {
-      "loanId": 2,
-      "qrValue": "INV-20260509-001|tea-shop|2",
-      "containerType": "cup",
-      "invoiceCode": "INV-20260509-001",
-      "invoiceSequence": 2,
-      "depositAmount": 20,
-      "issuedAt": "2026-05-09T12:05:32.062579",
-      "dueAt": "2026-05-12T12:05:32.062579"
-    }
-  ]
+  "issuedAt": "2026-05-09T12:05:32.062579",
+  "dueAt": "2026-05-12T12:05:32.062579"
 }
 ```
 
@@ -144,17 +127,18 @@ DB changes:
 
 | Table | Change |
 |---|---|
-| `loans` | 依 `cupCount` 新增多筆 `status='active'` 的借出紀錄，保存 `invoice_sequence` 與 `qr_token_hash`，不保存明文 `qrValue` |
+| `loans` | 同店同發票不存在時新增一筆；已存在時更新同一筆 `cup_count += cupCount`，保存 `qr_token_hash`，不保存明文 `qrValue` |
 
 ### 2. POST `/merchant/returns/scan`
 
-店家掃描 QR 回收容器時呼叫。掃描成功後，該 QR 立即失效，避免重複退押。
+店家掃描 QR 回收容器時呼叫。因為一張發票只有一個 QR，回收時也要傳本次回收杯數 `cupCount`。後端會累加 `returnedCount`，直到 `remainingCupCount` 為 0 才把狀態標記為 `returned`。
 
 Request:
 
 ```json
 {
-  "qrValue": "INV-20260509-001|tea-shop|1",
+  "qrValue": "INV-20260509-001|tea-shop",
+  "cupCount": 2,
   "condition": "normal",
   "note": "normal return"
 }
@@ -178,11 +162,14 @@ Response `200` for normal in-time return:
   "status": "returned",
   "containerType": "cup",
   "invoiceCode": "INV-20260509-001",
-  "invoiceSequence": 1,
   "issuedStoreId": 1,
   "returnedStoreId": 1,
+  "cupCount": 2,
+  "totalCupCount": 2,
+  "returnedCount": 2,
+  "remainingCupCount": 0,
   "depositAmount": 20,
-  "refundAmount": 20,
+  "refundAmount": 40,
   "refundReason": "normal",
   "isExpired": false,
   "isAbnormal": false,
@@ -200,9 +187,12 @@ Response `200` for expired or abnormal return:
   "status": "returned",
   "containerType": "cup",
   "invoiceCode": "INV-20260509-001",
-  "invoiceSequence": 1,
   "issuedStoreId": 1,
   "returnedStoreId": 2,
+  "cupCount": 2,
+  "totalCupCount": 2,
+  "returnedCount": 2,
+  "remainingCupCount": 0,
   "depositAmount": 20,
   "refundAmount": 0,
   "refundReason": "expired",
@@ -219,13 +209,14 @@ Failure:
 |---:|---|---|
 | 404 | QR 不存在 | `scan_events` 新增 `result='invalid_qr'` |
 | 409 | QR 已歸還，重複掃描 | `scan_events` 新增 `result='duplicate_scan'` |
+| 400 | 本次回收杯數超過剩餘杯數 | `scan_events` 新增 `result='return_count_exceeded'` |
 
 DB changes on accepted return:
 
 | Table | Change |
 |---|---|
-| `loans` | 更新為 `status='returned'`，寫入 `returned_store_id`、`returned_at`、`return_condition`、異常備註 |
-| `refund_ledgers` | 新增退押帳本；正常未逾期為全額，逾期或異常為 0 |
+| `loans` | 更新 `returned_count`；未全數回收為 `partial_returned`，全數回收為 `returned` |
+| `refund_ledgers` | 累加退押帳本；正常未逾期為 `20 * cupCount`，逾期或異常為 0 |
 | `scan_events` | 新增掃碼事件，供異常統計與稽核 |
 
 ### 3. GET `/merchant/stats/sold`
@@ -323,12 +314,12 @@ QR_VALUE=$(curl -s -X POST http://127.0.0.1:8000/merchant/qr-codes \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"invoiceCode":"INV-DEMO-001","cupCount":2}' \
-  | python -c 'import json,sys; print(json.load(sys.stdin)["items"][0]["qrValue"])')
+  | python -c 'import json,sys; print(json.load(sys.stdin)["qrValue"])')
 
 curl -s -X POST http://127.0.0.1:8000/merchant/returns/scan \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d "{\"qrValue\":\"$QR_VALUE\",\"condition\":\"normal\",\"note\":\"demo return\"}"
+  -d "{\"qrValue\":\"$QR_VALUE\",\"cupCount\":2,\"condition\":\"normal\",\"note\":\"demo return\"}"
 
 curl -s "http://127.0.0.1:8000/merchant/stats/sold?from=2026-05-08T00:00:00&to=2026-05-10T23:59:59" \
   -H "Authorization: Bearer $TOKEN"
@@ -379,7 +370,7 @@ SELECT * FROM v_abnormal_events ORDER BY created_at DESC;
 ## Notes
 
 - 時間以 `Asia/Taipei` 計算 3 天歸還期限，SQLite 內存 naive datetime。
-- `qrValue` 使用 `發票代號|商家代號|序號`；序號在同一店家同一張發票內遞增，換發票重置為 1。
-- DB 保存 `invoice_sequence` 與 SHA-256 `qr_token_hash`，不保存明文 `qrValue`。
+- `qrValue` 使用 `發票代號|商家代號`；同一店家同一張發票只有一個 QR。
+- DB 保存 `cup_count`、`returned_count` 與 SHA-256 `qr_token_hash`，不保存明文 `qrValue`。
 - 第一版不串真實金流，只保存 `refund_ledgers` 作為後端退押帳本。
 - 第一版不追蹤單一實體容器 ID。

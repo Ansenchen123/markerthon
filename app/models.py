@@ -57,6 +57,8 @@ class Loan(Base):
     issued_store_id = Column(Integer, ForeignKey("stores.id"), nullable=False, index=True)
     invoice_code = Column(String(80), nullable=False, index=True)
     invoice_sequence = Column(Integer, nullable=False, default=1)
+    cup_count = Column(Integer, nullable=False, default=1)
+    returned_count = Column(Integer, nullable=False, default=0)
     container_type = Column(String(20), nullable=False, index=True)
     deposit_amount = Column(Integer, nullable=False)
     status = Column(String(20), nullable=False, default="active", index=True)

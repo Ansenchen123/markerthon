@@ -23,6 +23,20 @@ def ensure_sqlite_compatibility() -> None:
         if "invoice_sequence" not in columns:
             conn.execute(text("ALTER TABLE loans ADD COLUMN invoice_sequence INTEGER"))
             conn.execute(text("UPDATE loans SET invoice_sequence = id WHERE invoice_sequence IS NULL"))
+        if "cup_count" not in columns:
+            conn.execute(text("ALTER TABLE loans ADD COLUMN cup_count INTEGER"))
+            conn.execute(text("UPDATE loans SET cup_count = 1 WHERE cup_count IS NULL"))
+        if "returned_count" not in columns:
+            conn.execute(text("ALTER TABLE loans ADD COLUMN returned_count INTEGER"))
+            conn.execute(
+                text(
+                    """
+                    UPDATE loans
+                    SET returned_count = CASE WHEN status = 'returned' THEN 1 ELSE 0 END
+                    WHERE returned_count IS NULL
+                    """
+                )
+            )
         conn.execute(
             text(
                 """

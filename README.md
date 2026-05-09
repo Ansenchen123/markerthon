@@ -33,9 +33,9 @@ Default database path: `data/reusable_container.db`.
 The QR value returned by `/merchant/qr-codes` is a one-time loan credential formatted as:
 
 ```text
-<invoiceCode>|<storeCode>|<invoiceSequence>
+<invoiceCode>|<storeCode>
 ```
 
-Example: `INV-20260509-001|tea-shop|1`.
+Example: `INV-20260509-001|tea-shop`.
 
-The invoice sequence resets for each invoice within the same store. `POST /merchant/qr-codes` accepts `invoiceCode` and `cupCount`, then returns one QR item per cup. The frontend should render each returned `qrValue` as a QR image and attach it to that cup.
+Each invoice has only one QR code per store. `POST /merchant/qr-codes` accepts `invoiceCode` and `cupCount`; repeated calls for the same store and invoice reuse the same QR value and increase the backend count. Returns decrease the backend remaining count.

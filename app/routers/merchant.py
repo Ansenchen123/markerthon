@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -12,7 +12,6 @@ from app.schemas import (
     MerchantRecoveredStatsResponse,
     MerchantSoldStatsResponse,
     QRCodeCreate,
-    QRCodeItem,
     QRCodeResponse,
     ReturnCondition,
     ReturnScanRequest,
@@ -46,68 +45,52 @@ def create_qr_code(
     current_user: MerchantUser = Depends(get_current_user),
 ) -> QRCodeResponse:
     issued_at = now_taipei()
-    current_max_sequence = db.scalar(
-        select(func.coalesce(func.max(Loan.invoice_sequence), 0)).where(
+    loan = db.scalar(
+        select(Loan).where(
             Loan.issued_store_id == current_user.store_id,
             Loan.invoice_code == payload.invoice_code,
+            Loan.invoice_sequence == 1,
         )
     )
-    start_sequence = int(current_max_sequence or 0) + 1
-    end_sequence = start_sequence + payload.cup_count - 1
-    due_at = due_at_from(issued_at)
-    qr_values_by_sequence: dict[int, str] = {}
 
-    for invoice_sequence in range(start_sequence, end_sequence + 1):
-        qr_value = generate_qr_value(payload.invoice_code, current_user.store.code, invoice_sequence)
-        qr_values_by_sequence[invoice_sequence] = qr_value
-        db.add(
-            Loan(
-                qr_token_hash=hash_qr_value(qr_value),
-                issued_store_id=current_user.store_id,
-                invoice_code=payload.invoice_code,
-                invoice_sequence=invoice_sequence,
-                container_type=ContainerType.cup.value,
-                deposit_amount=DEPOSIT_AMOUNTS[ContainerType.cup],
-                status="active",
-                issued_at=issued_at,
-                due_at=due_at,
-            )
+    qr_value = generate_qr_value(payload.invoice_code, current_user.store.code)
+    if loan is None:
+        loan = Loan(
+            qr_token_hash=hash_qr_value(qr_value),
+            issued_store_id=current_user.store_id,
+            invoice_code=payload.invoice_code,
+            invoice_sequence=1,
+            cup_count=payload.cup_count,
+            returned_count=0,
+            container_type=ContainerType.cup.value,
+            deposit_amount=DEPOSIT_AMOUNTS[ContainerType.cup],
+            status="active",
+            issued_at=issued_at,
+            due_at=due_at_from(issued_at),
         )
+        db.add(loan)
+    else:
+        loan.qr_token_hash = hash_qr_value(qr_value)
+        loan.cup_count += payload.cup_count
+        if loan.status == "returned":
+            loan.status = "partial_returned"
 
     db.commit()
-    loans = list(
-        db.scalars(
-            select(Loan)
-            .where(
-                Loan.issued_store_id == current_user.store_id,
-                Loan.invoice_code == payload.invoice_code,
-                Loan.invoice_sequence >= start_sequence,
-                Loan.invoice_sequence <= end_sequence,
-            )
-            .order_by(Loan.invoice_sequence)
-        )
-    )
+    db.refresh(loan)
 
     return QRCodeResponse(
+        loanId=loan.id,
+        qrValue=qr_value,
         invoiceCode=payload.invoice_code,
         storeCode=current_user.store.code,
-        cupCount=payload.cup_count,
-        startSequence=start_sequence,
-        endSequence=end_sequence,
-        totalDepositAmount=sum(loan.deposit_amount for loan in loans),
-        items=[
-            QRCodeItem(
-                loanId=loan.id,
-                qrValue=qr_values_by_sequence[loan.invoice_sequence],
-                containerType=loan.container_type,
-                invoiceCode=loan.invoice_code,
-                invoiceSequence=loan.invoice_sequence,
-                depositAmount=loan.deposit_amount,
-                issuedAt=loan.issued_at,
-                dueAt=loan.due_at,
-            )
-            for loan in loans
-        ],
+        addedCupCount=payload.cup_count,
+        totalCupCount=loan.cup_count,
+        returnedCount=loan.returned_count,
+        remainingCupCount=loan.cup_count - loan.returned_count,
+        depositAmount=loan.deposit_amount,
+        totalDepositAmount=loan.cup_count * loan.deposit_amount,
+        issuedAt=loan.issued_at,
+        dueAt=loan.due_at,
     )
 
 
@@ -135,7 +118,8 @@ def scan_return(
         db.commit()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="QR value is not recognized")
 
-    if loan.status != "active":
+    remaining_count = loan.cup_count - loan.returned_count
+    if remaining_count <= 0 or loan.status == "returned":
         db.add(
             ScanEvent(
                 qr_token_hash=qr_hash,
@@ -150,27 +134,50 @@ def scan_return(
         db.commit()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This QR value has already been returned")
 
+    if payload.cup_count > remaining_count:
+        db.add(
+            ScanEvent(
+                qr_token_hash=qr_hash,
+                loan_id=loan.id,
+                store_id=current_user.store_id,
+                result="return_count_exceeded",
+                reason="return_count_exceeded",
+                note=payload.note,
+                created_at=scanned_at,
+            )
+        )
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Return cup count exceeds remaining count")
+
     is_expired = scanned_at > loan.due_at
     is_abnormal = payload.condition != ReturnCondition.normal
-    refund_amount = loan.deposit_amount if not is_expired and not is_abnormal else 0
+    refund_amount = loan.deposit_amount * payload.cup_count if not is_expired and not is_abnormal else 0
     refund_reason = _refund_reason(is_expired, payload.condition)
-    scan_result = "returned" if refund_amount == loan.deposit_amount else "returned_no_refund"
+    scan_result = "returned" if refund_amount == loan.deposit_amount * payload.cup_count else "returned_no_refund"
 
-    loan.status = "returned"
+    loan.returned_count += payload.cup_count
+    loan.status = "returned" if loan.returned_count == loan.cup_count else "partial_returned"
     loan.returned_at = scanned_at
     loan.returned_store_id = current_user.store_id
     loan.return_condition = payload.condition.value
     loan.abnormal_note = payload.note if refund_reason != "normal" else None
 
-    db.add(
-        RefundLedger(
+    refund_ledger = loan.refund_ledger
+    if refund_ledger is None:
+        refund_ledger = RefundLedger(
             loan_id=loan.id,
             store_id=current_user.store_id,
-            refund_amount=refund_amount,
+            refund_amount=0,
             reason=refund_reason,
             created_at=scanned_at,
         )
-    )
+        db.add(refund_ledger)
+
+    refund_ledger.store_id = current_user.store_id
+    refund_ledger.refund_amount += refund_amount
+    refund_ledger.reason = refund_reason
+    refund_ledger.created_at = scanned_at
+
     db.add(
         ScanEvent(
             qr_token_hash=qr_hash,
@@ -191,9 +198,12 @@ def scan_return(
         status=loan.status,
         containerType=loan.container_type,
         invoiceCode=loan.invoice_code,
-        invoiceSequence=loan.invoice_sequence,
         issuedStoreId=loan.issued_store_id,
         returnedStoreId=loan.returned_store_id,
+        cupCount=payload.cup_count,
+        totalCupCount=loan.cup_count,
+        returnedCount=loan.returned_count,
+        remainingCupCount=loan.cup_count - loan.returned_count,
         depositAmount=loan.deposit_amount,
         refundAmount=refund_amount,
         refundReason=refund_reason,
@@ -227,10 +237,10 @@ def get_sold_stats(
         storeId=current_user.store_id,
         **{"from": from_at, "to": to_at},
         containerType=container_type.value if container_type else None,
-        totalCount=len(loans),
-        cupCount=sum(1 for loan in loans if loan.container_type == ContainerType.cup.value),
-        mealBoxCount=sum(1 for loan in loans if loan.container_type == ContainerType.meal_box.value),
-        depositTotal=sum(loan.deposit_amount for loan in loans),
+        totalCount=sum(loan.cup_count for loan in loans),
+        cupCount=sum(loan.cup_count for loan in loans if loan.container_type == ContainerType.cup.value),
+        mealBoxCount=sum(loan.cup_count for loan in loans if loan.container_type == ContainerType.meal_box.value),
+        depositTotal=sum(loan.deposit_amount * loan.cup_count for loan in loans),
     )
 
 
@@ -254,13 +264,13 @@ def get_recovered_stats(
     loans = list(db.scalars(statement))
 
     normal_count = sum(
-        1
+        loan.returned_count
         for loan in loans
         if loan.return_condition == ReturnCondition.normal.value and loan.returned_at <= loan.due_at
     )
-    expired_count = sum(1 for loan in loans if loan.returned_at > loan.due_at)
+    expired_count = sum(loan.returned_count for loan in loans if loan.returned_at > loan.due_at)
     abnormal_count = sum(
-        1 for loan in loans if loan.return_condition and loan.return_condition != ReturnCondition.normal.value
+        loan.returned_count for loan in loans if loan.return_condition and loan.return_condition != ReturnCondition.normal.value
     )
     refund_total = sum(loan.refund_ledger.refund_amount for loan in loans if loan.refund_ledger is not None)
 
@@ -268,10 +278,10 @@ def get_recovered_stats(
         storeId=current_user.store_id,
         **{"from": from_at, "to": to_at},
         containerType=container_type.value if container_type else None,
-        totalCount=len(loans),
+        totalCount=sum(loan.returned_count for loan in loans),
         normalCount=normal_count,
         expiredCount=expired_count,
         abnormalCount=abnormal_count,
-        crossStoreCount=sum(1 for loan in loans if loan.issued_store_id != loan.returned_store_id),
+        crossStoreCount=sum(loan.returned_count for loan in loans if loan.issued_store_id != loan.returned_store_id),
         refundTotal=refund_total,
     )

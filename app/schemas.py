@@ -43,29 +43,24 @@ class QRCodeCreate(APIModel):
     cup_count: int = Field(alias="cupCount", ge=1, le=100)
 
 
-class QRCodeItem(APIModel):
+class QRCodeResponse(APIModel):
     loan_id: int = Field(alias="loanId")
     qr_value: str = Field(alias="qrValue")
-    container_type: ContainerType = Field(alias="containerType")
     invoice_code: str = Field(alias="invoiceCode")
-    invoice_sequence: int = Field(alias="invoiceSequence")
+    store_code: str = Field(alias="storeCode")
+    added_cup_count: int = Field(alias="addedCupCount")
+    total_cup_count: int = Field(alias="totalCupCount")
+    returned_count: int = Field(alias="returnedCount")
+    remaining_cup_count: int = Field(alias="remainingCupCount")
     deposit_amount: int = Field(alias="depositAmount")
+    total_deposit_amount: int = Field(alias="totalDepositAmount")
     issued_at: datetime = Field(alias="issuedAt")
     due_at: datetime = Field(alias="dueAt")
 
 
-class QRCodeResponse(APIModel):
-    invoice_code: str = Field(alias="invoiceCode")
-    store_code: str = Field(alias="storeCode")
-    cup_count: int = Field(alias="cupCount")
-    start_sequence: int = Field(alias="startSequence")
-    end_sequence: int = Field(alias="endSequence")
-    total_deposit_amount: int = Field(alias="totalDepositAmount")
-    items: list[QRCodeItem]
-
-
 class ReturnScanRequest(APIModel):
     qr_value: str = Field(alias="qrValue", min_length=1)
+    cup_count: int = Field(alias="cupCount", ge=1, le=100)
     condition: ReturnCondition = ReturnCondition.normal
     note: Optional[str] = None
 
@@ -76,9 +71,12 @@ class ReturnScanResponse(APIModel):
     status: str
     container_type: ContainerType = Field(alias="containerType")
     invoice_code: str = Field(alias="invoiceCode")
-    invoice_sequence: int = Field(alias="invoiceSequence")
     issued_store_id: int = Field(alias="issuedStoreId")
     returned_store_id: int = Field(alias="returnedStoreId")
+    cup_count: int = Field(alias="cupCount")
+    total_cup_count: int = Field(alias="totalCupCount")
+    returned_count: int = Field(alias="returnedCount")
+    remaining_cup_count: int = Field(alias="remainingCupCount")
     deposit_amount: int = Field(alias="depositAmount")
     refund_amount: int = Field(alias="refundAmount")
     refund_reason: str = Field(alias="refundReason")

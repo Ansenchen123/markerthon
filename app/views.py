@@ -13,24 +13,24 @@ def create_sqlite_views(engine: Engine) -> None:
                 """
                 CREATE VIEW v_gov_overview AS
                 SELECT
-                    COUNT(l.id) AS loans_total,
-                    SUM(CASE WHEN l.status = 'returned' THEN 1 ELSE 0 END) AS returned_total,
+                    COALESCE(SUM(l.cup_count), 0) AS loans_total,
+                    COALESCE(SUM(l.returned_count), 0) AS returned_total,
                     ROUND(
                         CASE
-                            WHEN COUNT(l.id) = 0 THEN 0
-                            ELSE CAST(SUM(CASE WHEN l.status = 'returned' THEN 1 ELSE 0 END) AS REAL) / COUNT(l.id)
+                            WHEN COALESCE(SUM(l.cup_count), 0) = 0 THEN 0
+                            ELSE CAST(COALESCE(SUM(l.returned_count), 0) AS REAL) / SUM(l.cup_count)
                         END,
                         4
                     ) AS recovery_rate,
-                    SUM(
+                    COALESCE(SUM(
                         CASE
                             WHEN l.returned_at IS NOT NULL
                                 AND (l.returned_at > l.due_at OR COALESCE(l.return_condition, 'normal') != 'normal')
-                            THEN 1
+                            THEN l.returned_count
                             ELSE 0
                         END
-                    ) AS abnormal_total,
-                    COALESCE(SUM(l.deposit_amount), 0) AS deposit_total,
+                    ), 0) AS abnormal_total,
+                    COALESCE(SUM(l.deposit_amount * l.cup_count), 0) AS deposit_total,
                     COALESCE(SUM(r.refund_amount), 0) AS refund_total
                 FROM loans l
                 LEFT JOIN refund_ledgers r ON r.loan_id = l.id
@@ -52,24 +52,24 @@ def create_sqlite_views(engine: Engine) -> None:
                     COALESCE(returned.abnormal_count, 0) AS abnormal_count
                 FROM stores s
                 LEFT JOIN (
-                    SELECT issued_store_id AS store_id, COUNT(*) AS issued_count
+                    SELECT issued_store_id AS store_id, SUM(cup_count) AS issued_count
                     FROM loans
                     GROUP BY issued_store_id
                 ) issued ON issued.store_id = s.id
                 LEFT JOIN (
                     SELECT
                         returned_store_id AS store_id,
-                        COUNT(*) AS returned_count,
-                        SUM(CASE WHEN returned_store_id != issued_store_id THEN 1 ELSE 0 END) AS cross_store_count,
+                        SUM(returned_count) AS returned_count,
+                        SUM(CASE WHEN returned_store_id != issued_store_id THEN returned_count ELSE 0 END) AS cross_store_count,
                         SUM(
                             CASE
                                 WHEN returned_at > due_at OR COALESCE(return_condition, 'normal') != 'normal'
-                                THEN 1
+                                THEN returned_count
                                 ELSE 0
                             END
                         ) AS abnormal_count
                     FROM loans
-                    WHERE status = 'returned'
+                    WHERE returned_count > 0
                     GROUP BY returned_store_id
                 ) returned ON returned.store_id = s.id
                 """
