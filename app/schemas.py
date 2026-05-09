@@ -164,13 +164,14 @@ class MerchantSoldStatsResponse(APIModel):
     store_id: int = Field(alias="storeId")
     from_date: date = Field(alias="from")
     to_date: date = Field(alias="to")
-    container_type: Optional[ContainerType] = Field(default=None, alias="containerType")
     rows: list[MerchantSoldStatsRow]
 
 
 class MerchantRecoveredStatsRow(APIModel):
     stat_date: date = Field(alias="statDate")
     total_count: int = Field(alias="totalCount")
+    cup_count: int = Field(alias="cupCount")
+    meal_box_count: int = Field(alias="mealBoxCount")
     normal_count: int = Field(alias="normalCount")
     expired_count: int = Field(alias="expiredCount")
     abnormal_count: int = Field(alias="abnormalCount")
@@ -181,7 +182,6 @@ class MerchantRecoveredStatsResponse(APIModel):
     store_id: int = Field(alias="storeId")
     from_date: date = Field(alias="from")
     to_date: date = Field(alias="to")
-    container_type: Optional[ContainerType] = Field(default=None, alias="containerType")
     rows: list[MerchantRecoveredStatsRow]
 
 

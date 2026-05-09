@@ -1,6 +1,4 @@
 from datetime import date, datetime
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -55,15 +53,12 @@ def _merchant_report_rows(
     store_id: int,
     from_date: date,
     to_date: date,
-    container_type: Optional[ContainerType],
 ) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for row in read_report_rows(from_date, to_date):
         if row.get("eventType") != event_type:
             continue
         if int(row.get("storeId") or 0) != store_id:
-            continue
-        if container_type is not None and row.get("containerType") != container_type.value:
             continue
 
         occurred_date = datetime.fromisoformat(row["occurredAt"]).date()
@@ -109,13 +104,25 @@ def _recovered_stat_rows(
     to_date: date,
 ) -> list[MerchantRecoveredStatsRow]:
     summaries = {
-        stat_date: {"totalCount": 0, "normalCount": 0, "expiredCount": 0, "abnormalCount": 0, "crossStoreCount": 0}
+        stat_date: {
+            "totalCount": 0,
+            "cupCount": 0,
+            "mealBoxCount": 0,
+            "normalCount": 0,
+            "expiredCount": 0,
+            "abnormalCount": 0,
+            "crossStoreCount": 0,
+        }
         for stat_date in iter_report_dates(from_date, to_date)
     }
     for row in rows:
         stat_date = datetime.fromisoformat(row["occurredAt"]).date()
         count = _row_count(row)
         summaries[stat_date]["totalCount"] += count
+        if row["containerType"] == ContainerType.cup.value:
+            summaries[stat_date]["cupCount"] += count
+        elif row["containerType"] == ContainerType.meal_box.value:
+            summaries[stat_date]["mealBoxCount"] += count
         summaries[stat_date]["normalCount"] += (
             count if not _row_bool(row, "isExpired") and not _row_bool(row, "isAbnormal") else 0
         )
@@ -127,6 +134,8 @@ def _recovered_stat_rows(
         MerchantRecoveredStatsRow(
             statDate=stat_date,
             totalCount=summary["totalCount"],
+            cupCount=summary["cupCount"],
+            mealBoxCount=summary["mealBoxCount"],
             normalCount=summary["normalCount"],
             expiredCount=summary["expiredCount"],
             abnormalCount=summary["abnormalCount"],
@@ -324,7 +333,6 @@ def scan_return(
 def get_sold_stats(
     from_date: date = Query(..., alias="from"),
     to_date: date = Query(..., alias="to"),
-    container_type: Optional[ContainerType] = Query(default=None, alias="containerType"),
     current_user: MerchantUser = Depends(get_current_user),
 ) -> MerchantSoldStatsResponse:
     if from_date > to_date:
@@ -334,13 +342,11 @@ def get_sold_stats(
         store_id=current_user.store_id,
         from_date=from_date,
         to_date=to_date,
-        container_type=container_type,
     )
 
     return MerchantSoldStatsResponse(
         storeId=current_user.store_id,
         **{"from": from_date, "to": to_date},
-        containerType=container_type.value if container_type else None,
         rows=_sold_stat_rows(rows=rows, from_date=from_date, to_date=to_date),
     )
 
@@ -349,7 +355,6 @@ def get_sold_stats(
 def get_recovered_stats(
     from_date: date = Query(..., alias="from"),
     to_date: date = Query(..., alias="to"),
-    container_type: Optional[ContainerType] = Query(default=None, alias="containerType"),
     current_user: MerchantUser = Depends(get_current_user),
 ) -> MerchantRecoveredStatsResponse:
     if from_date > to_date:
@@ -359,12 +364,10 @@ def get_recovered_stats(
         store_id=current_user.store_id,
         from_date=from_date,
         to_date=to_date,
-        container_type=container_type,
     )
 
     return MerchantRecoveredStatsResponse(
         storeId=current_user.store_id,
         **{"from": from_date, "to": to_date},
-        containerType=container_type.value if container_type else None,
         rows=_recovered_stat_rows(rows=rows, from_date=from_date, to_date=to_date),
     )

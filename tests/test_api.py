@@ -462,17 +462,31 @@ def test_merchant_stats_are_scoped_to_current_store(context):
 
     tea_qr = create_qr(client, tea_headers, "STAT-001")
     second_tea_qr = create_qr(client, tea_headers, "STAT-002")
+    tea_meal_box_qr = create_qr_batch(
+        client,
+        tea_headers,
+        invoice="STAT-MEAL-001",
+        cup_count=2,
+        container_type="meal_box",
+    )
     client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
         json={"qrValue": tea_qr["qrValue"]},
     )
+    client.post(
+        "/merchant/returns/scan",
+        headers=bento_headers,
+        json={"qrValue": tea_meal_box_qr["qrValue"]},
+    )
 
     with SessionLocal() as db:
         first_loan = db.get(Loan, tea_qr["loanId"])
         second_loan = db.get(Loan, second_tea_qr["loanId"])
+        meal_box_loan = db.get(Loan, tea_meal_box_qr["loanId"])
         first_loan.returned_count = 42
         second_loan.cup_count = 99
+        meal_box_loan.cup_count = 88
         db.commit()
 
     params = merchant_stats_range()
@@ -480,8 +494,11 @@ def test_merchant_stats_are_scoped_to_current_store(context):
     tea_sold = client.get("/merchant/stats/sold", headers=tea_headers, params=params)
     assert tea_sold.status_code == 200
     assert len(tea_sold.json()["rows"]) == 3
+    assert "containerType" not in tea_sold.json()
     tea_sold_today = next(row for row in tea_sold.json()["rows"] if row["statDate"] == today)
-    assert tea_sold_today["totalCount"] == 2
+    assert tea_sold_today["totalCount"] == 4
+    assert tea_sold_today["cupCount"] == 2
+    assert tea_sold_today["mealBoxCount"] == 2
     assert "depositTotal" not in tea_sold.json()
 
     bento_sold = client.get("/merchant/stats/sold", headers=bento_headers, params=params)
@@ -492,9 +509,12 @@ def test_merchant_stats_are_scoped_to_current_store(context):
     bento_recovered = client.get("/merchant/stats/recovered", headers=bento_headers, params=params)
     assert bento_recovered.status_code == 200
     assert len(bento_recovered.json()["rows"]) == 3
+    assert "containerType" not in bento_recovered.json()
     bento_recovered_today = next(row for row in bento_recovered.json()["rows"] if row["statDate"] == today)
-    assert bento_recovered_today["totalCount"] == 1
-    assert bento_recovered_today["crossStoreCount"] == 1
+    assert bento_recovered_today["totalCount"] == 2
+    assert bento_recovered_today["cupCount"] == 1
+    assert bento_recovered_today["mealBoxCount"] == 1
+    assert bento_recovered_today["crossStoreCount"] == 2
 
     tea_recovered = client.get("/merchant/stats/recovered", headers=tea_headers, params=params)
     assert tea_recovered.status_code == 200

@@ -184,7 +184,7 @@ MVP 目前不處理真實金流，只依容器類型在系統內保存押金規�
 - **店家報表**：各店借出量、回收量、跨店回收量、異常件數。
 - **政府報表**：整體使用率、回收率、減少一次性容器估算、補助成效。
 
-MVP 目前採每日 CSV append log 控制資料量，每天產生一個 `daily_report_YYYY-MM-DD.csv`，同一天的借出與回收都以 log row 追加寫入。商家統計 API 與政府端 daily API 讀取 CSV 後聚合賣出與回收：
+MVP 目前採每日 CSV append log 控制資料量，每天產生一個 `daily_report_YYYY-MM-DD.csv`，同一天的借出與回收都以 log row 追加寫入。商家統計 API 讀取 CSV 後依日期聚合，固定回傳區間內每天一筆並同時包含杯子與餐盒數量；政府端 daily API 也讀取同一批 CSV 聚合賣出與回收：
 
 - `GET /government/daily/sold`
 - `GET /government/daily/recovered`

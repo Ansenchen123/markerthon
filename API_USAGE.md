@@ -280,7 +280,7 @@ DB changes on accepted return:
 
 ### 3. GET `/merchant/stats/sold`
 
-查詢登入商家在日期區間內自己每天賣出多少循環杯/餐盒。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
+查詢登入商家在日期區間內自己每天賣出多少循環杯/餐盒。商家端不提供容器類型 filter；後端會一次回傳全部類型，並在每天的 row 裡列出總數、杯數與餐盒數。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
 
 Query params:
 
@@ -288,12 +288,11 @@ Query params:
 |---|---|---|
 | `from` | yes | `2026-05-08` |
 | `to` | yes | `2026-05-10` |
-| `containerType` | no | `cup` or `meal_box` |
 
 Example:
 
 ```http
-GET /merchant/stats/sold?from=2026-05-08&to=2026-05-10&containerType=cup
+GET /merchant/stats/sold?from=2026-05-08&to=2026-05-10
 Authorization: Bearer <accessToken>
 ```
 
@@ -304,7 +303,6 @@ Response `200`:
   "storeId": 1,
   "from": "2026-05-08",
   "to": "2026-05-10",
-  "containerType": "cup",
   "rows": [
     {
       "statDate": "2026-05-08",
@@ -336,7 +334,7 @@ CSV read:
 
 ### 4. GET `/merchant/stats/recovered`
 
-查詢登入商家在日期區間內自己每天回收多少循環杯/餐盒。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
+查詢登入商家在日期區間內自己每天回收多少循環杯/餐盒。商家端不提供容器類型 filter；後端會一次回傳全部類型，並在每天的 row 裡列出總數、杯數、餐盒數與回收狀態分項。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
 
 Query params:
 
@@ -344,7 +342,6 @@ Query params:
 |---|---|---|
 | `from` | yes | `2026-05-08` |
 | `to` | yes | `2026-05-10` |
-| `containerType` | no | `cup` or `meal_box` |
 
 Example:
 
@@ -360,11 +357,12 @@ Response `200`:
   "storeId": 1,
   "from": "2026-05-08",
   "to": "2026-05-10",
-  "containerType": null,
   "rows": [
     {
       "statDate": "2026-05-08",
       "totalCount": 0,
+      "cupCount": 0,
+      "mealBoxCount": 0,
       "normalCount": 0,
       "expiredCount": 0,
       "abnormalCount": 0,
@@ -373,6 +371,8 @@ Response `200`:
     {
       "statDate": "2026-05-09",
       "totalCount": 1,
+      "cupCount": 1,
+      "mealBoxCount": 0,
       "normalCount": 1,
       "expiredCount": 0,
       "abnormalCount": 0,
@@ -381,6 +381,8 @@ Response `200`:
     {
       "statDate": "2026-05-10",
       "totalCount": 0,
+      "cupCount": 0,
+      "mealBoxCount": 0,
       "normalCount": 0,
       "expiredCount": 0,
       "abnormalCount": 0,
@@ -817,6 +819,6 @@ daily_report_YYYY-MM-DD.csv
 - 時間以 `Asia/Taipei` 計算 3 天歸還期限，SQLite 內存 naive datetime。
 - `qrValue` 使用 `發票代號|商家代號|容器類型`；同一店家同一張發票同一容器類型只有一個 QR。
 - DB 保存 `cup_count`、`returned_count` 與 SHA-256 `qr_token_hash`，不保存明文 `qrValue`。
-- 每日統計不再用 DB table；後端以每日 CSV append log 控制資料量，商家統計 API 與政府端 daily API 會讀 CSV 聚合。
+- 每日統計不再用 DB table；後端以每日 CSV append log 控制資料量，商家統計 API 與政府端 daily API 會讀 CSV 聚合。商家統計 API 不提供類型 filter，會在每日 row 中一次回傳 `cupCount` 與 `mealBoxCount`。
 - 第一版不串真實金流，只保存 `refund_ledgers` 作為後端退押帳本。
 - 第一版不追蹤單一實體容器 ID。
