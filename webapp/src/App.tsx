@@ -38,6 +38,7 @@ type StoreInfo = {
 
 const SCAN_LOCK_MS = 700;
 const SCAN_COOLDOWN_MS = 2500;
+const SCAN_RESTART_GRACE_MS = 120;
 
 type CreatedQrCode = MerchantQrCodeResponse & {
   imageUrl: string;
@@ -857,6 +858,7 @@ function CameraQrScanner({
   const detectedRef = useRef(false);
   const cooldownUntilRef = useRef(0);
   const cooldownTimerRef = useRef<number | null>(null);
+  const restartTimerRef = useRef<number | null>(null);
   const onDetectedRef = useRef(onDetected);
   const [cameraError, setCameraError] = useState('');
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
@@ -868,6 +870,7 @@ function CameraQrScanner({
   useEffect(() => {
     let isMounted = true;
     detectedRef.current = false;
+    cooldownUntilRef.current = 0;
     setCooldownSeconds(0);
     setCameraError('');
 
@@ -875,6 +878,13 @@ function CameraQrScanner({
       if (cooldownTimerRef.current !== null) {
         window.clearInterval(cooldownTimerRef.current);
         cooldownTimerRef.current = null;
+      }
+    };
+
+    const stopRestartTimer = () => {
+      if (restartTimerRef.current !== null) {
+        window.clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = null;
       }
     };
 
@@ -906,14 +916,19 @@ function CameraQrScanner({
       cooldownTimerRef.current = window.setInterval(updateCooldownSeconds, 200);
     };
 
-    const scanner = new Html5Qrcode(elementIdRef.current, {
-      formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-      verbose: false,
-    });
-    scannerRef.current = scanner;
+    const startScanner = () => {
+      if (!isMounted || scannerRef.current) {
+        return;
+      }
 
-    scanner
-      .start(
+      const scanner = new Html5Qrcode(elementIdRef.current, {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false,
+      });
+      scannerRef.current = scanner;
+
+      scanner
+        .start(
         { facingMode: 'environment' },
         {
           fps: 12,
@@ -922,40 +937,7 @@ function CameraQrScanner({
             return { width: edge, height: edge };
           },
         },
-        async (decodedText) => {
-          const qrValue = decodedText.trim();
-          const now = Date.now();
-
-          if (
-            detectedRef.current ||
-            !qrValue ||
-            now < cooldownUntilRef.current
-          ) {
-            return;
-          }
-
-          detectedRef.current = true;
-          cooldownUntilRef.current = now + SCAN_COOLDOWN_MS;
-          startCooldownTimer();
-
-          try {
-            await onDetectedRef.current(qrValue);
-          } finally {
-            if (!isMounted) {
-              return;
-            }
-
-            window.setTimeout(() => {
-              detectedRef.current = false;
-
-              if (!isMounted) {
-                return;
-              }
-
-              // The scanner keeps running; this lock only prevents duplicate API calls.
-            }, SCAN_LOCK_MS);
-          }
-        },
+        handleDetected,
         () => undefined,
       )
       .catch((err: unknown) => {
@@ -969,11 +951,100 @@ function CameraQrScanner({
             : '無法開啟攝像頭，請確認瀏覽器相機權限或改用手動輸入。',
         );
       });
+    };
+
+    const clearScanner = (scannerInstance: Html5Qrcode) => {
+      try {
+        scannerInstance.clear();
+      } catch {
+        // Nothing to clear if html5-qrcode has already removed its DOM.
+      }
+    };
+
+    const stopScanner = async (scannerInstance: Html5Qrcode) => {
+      const state = scannerInstance.getState();
+
+      if (
+        state === Html5QrcodeScannerState.SCANNING ||
+        state === Html5QrcodeScannerState.PAUSED
+      ) {
+        await scannerInstance.stop();
+      }
+
+      clearScanner(scannerInstance);
+    };
+
+    const restartScanner = () => {
+      restartTimerRef.current = null;
+
+      if (!isMounted || detectedRef.current || Date.now() < cooldownUntilRef.current) {
+        return;
+      }
+
+      const scannerInstance = scannerRef.current;
+
+      if (!scannerInstance) {
+        startScanner();
+        return;
+      }
+
+      scannerRef.current = null;
+      void stopScanner(scannerInstance)
+        .catch(() => {
+          clearScanner(scannerInstance);
+        })
+        .finally(() => {
+          if (isMounted) {
+            startScanner();
+          }
+        });
+    };
+
+    const scheduleScannerRestart = () => {
+      stopRestartTimer();
+      restartTimerRef.current = window.setTimeout(
+        restartScanner,
+        Math.max(SCAN_LOCK_MS, cooldownUntilRef.current - Date.now() + SCAN_RESTART_GRACE_MS),
+      );
+    };
+
+    async function handleDetected(decodedText: string) {
+      const qrValue = decodedText.trim();
+      const now = Date.now();
+
+      if (
+        detectedRef.current ||
+        !qrValue ||
+        now < cooldownUntilRef.current
+      ) {
+        return;
+      }
+
+      detectedRef.current = true;
+      cooldownUntilRef.current = now + SCAN_COOLDOWN_MS;
+      startCooldownTimer();
+
+      try {
+        await onDetectedRef.current(qrValue);
+      } finally {
+        if (!isMounted) {
+          return;
+        }
+
+        window.setTimeout(() => {
+          detectedRef.current = false;
+        }, SCAN_LOCK_MS);
+        scheduleScannerRestart();
+      }
+    }
+
+    startScanner();
 
     return () => {
       isMounted = false;
       detectedRef.current = true;
       stopCooldownTimer();
+      stopRestartTimer();
       const scannerInstance = scannerRef.current;
       scannerRef.current = null;
 
@@ -981,25 +1052,7 @@ function CameraQrScanner({
         return;
       }
 
-      const clearScanner = () => {
-        try {
-          scannerInstance.clear();
-        } catch {
-          // Nothing to clear if html5-qrcode has already removed its DOM.
-        }
-      };
-
-      const state = scannerInstance.getState();
-
-      if (
-        state === Html5QrcodeScannerState.SCANNING ||
-        state === Html5QrcodeScannerState.PAUSED
-      ) {
-        void scannerInstance.stop().then(clearScanner).catch(clearScanner);
-        return;
-      }
-
-      clearScanner();
+      void stopScanner(scannerInstance).catch(() => clearScanner(scannerInstance));
     };
   }, []);
 
