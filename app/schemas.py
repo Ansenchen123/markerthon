@@ -39,12 +39,11 @@ class LoginResponse(APIModel):
 
 
 class QRCodeCreate(APIModel):
-    container_type: ContainerType = Field(alias="containerType")
     invoice_code: str = Field(alias="invoiceCode", min_length=1, max_length=80)
-    note: Optional[str] = None
+    cup_count: int = Field(alias="cupCount", ge=1, le=100)
 
 
-class QRCodeResponse(APIModel):
+class QRCodeItem(APIModel):
     loan_id: int = Field(alias="loanId")
     qr_value: str = Field(alias="qrValue")
     container_type: ContainerType = Field(alias="containerType")
@@ -53,6 +52,16 @@ class QRCodeResponse(APIModel):
     deposit_amount: int = Field(alias="depositAmount")
     issued_at: datetime = Field(alias="issuedAt")
     due_at: datetime = Field(alias="dueAt")
+
+
+class QRCodeResponse(APIModel):
+    invoice_code: str = Field(alias="invoiceCode")
+    store_code: str = Field(alias="storeCode")
+    cup_count: int = Field(alias="cupCount")
+    start_sequence: int = Field(alias="startSequence")
+    end_sequence: int = Field(alias="endSequence")
+    total_deposit_amount: int = Field(alias="totalDepositAmount")
+    items: list[QRCodeItem]
 
 
 class ReturnScanRequest(APIModel):

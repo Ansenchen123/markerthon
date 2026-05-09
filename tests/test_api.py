@@ -54,14 +54,18 @@ def login_headers(client: TestClient, username: str = "tea_owner") -> dict[str, 
     return {"Authorization": f"Bearer {response.json()['accessToken']}"}
 
 
-def create_qr(client: TestClient, headers: dict[str, str], container_type: str = "cup", invoice: str = "INV-001") -> dict:
+def create_qr_batch(client: TestClient, headers: dict[str, str], invoice: str = "INV-001", cup_count: int = 1) -> dict:
     response = client.post(
         "/merchant/qr-codes",
         headers=headers,
-        json={"containerType": container_type, "invoiceCode": invoice},
+        json={"invoiceCode": invoice, "cupCount": cup_count},
     )
     assert response.status_code == 201
     return response.json()
+
+
+def create_qr(client: TestClient, headers: dict[str, str], invoice: str = "INV-001") -> dict:
+    return create_qr_batch(client, headers, invoice=invoice, cup_count=1)["items"][0]
 
 
 def stats_range() -> dict[str, str]:
@@ -84,20 +88,26 @@ def test_login_success_and_failure(context):
     assert failure.status_code == 401
 
 
-def test_create_qr_code_uses_container_deposit_amounts(context):
+def test_create_qr_code_uses_cup_count_and_deposit_amounts(context):
     client, _ = context
     headers = login_headers(client)
 
-    cup = create_qr(client, headers, "cup", "CUP-001")
-    assert cup["depositAmount"] == 20
-    assert cup["invoiceSequence"] == 1
-    assert cup["qrValue"] == "CUP-001|tea-shop|1"
+    batch = create_qr_batch(client, headers, invoice="CUP-001", cup_count=3)
 
-    meal_box = create_qr(client, headers, "meal_box", "BOX-001")
-    assert meal_box["depositAmount"] == 50
-    assert meal_box["containerType"] == "meal_box"
-    assert meal_box["invoiceSequence"] == 1
-    assert meal_box["qrValue"] == "BOX-001|tea-shop|1"
+    assert batch["invoiceCode"] == "CUP-001"
+    assert batch["storeCode"] == "tea-shop"
+    assert batch["cupCount"] == 3
+    assert batch["startSequence"] == 1
+    assert batch["endSequence"] == 3
+    assert batch["totalDepositAmount"] == 60
+    assert [item["invoiceSequence"] for item in batch["items"]] == [1, 2, 3]
+    assert [item["qrValue"] for item in batch["items"]] == [
+        "CUP-001|tea-shop|1",
+        "CUP-001|tea-shop|2",
+        "CUP-001|tea-shop|3",
+    ]
+    assert all(item["containerType"] == "cup" for item in batch["items"])
+    assert all(item["depositAmount"] == 20 for item in batch["items"])
 
 
 def test_invoice_sequence_resets_per_invoice_and_store(context):
@@ -105,26 +115,35 @@ def test_invoice_sequence_resets_per_invoice_and_store(context):
     tea_headers = login_headers(client, "tea_owner")
     bento_headers = login_headers(client, "bento_owner")
 
-    first = create_qr(client, tea_headers, "cup", "SAME-INVOICE")
-    second = create_qr(client, tea_headers, "cup", "SAME-INVOICE")
-    other_invoice = create_qr(client, tea_headers, "cup", "OTHER-INVOICE")
-    other_store = create_qr(client, bento_headers, "cup", "SAME-INVOICE")
+    first_batch = create_qr_batch(client, tea_headers, invoice="SAME-INVOICE", cup_count=3)
+    second_batch = create_qr_batch(client, tea_headers, invoice="SAME-INVOICE", cup_count=2)
+    other_invoice = create_qr_batch(client, tea_headers, invoice="OTHER-INVOICE", cup_count=1)
+    other_store = create_qr_batch(client, bento_headers, invoice="SAME-INVOICE", cup_count=1)
 
-    assert first["invoiceSequence"] == 1
-    assert first["qrValue"] == "SAME-INVOICE|tea-shop|1"
-    assert second["invoiceSequence"] == 2
-    assert second["qrValue"] == "SAME-INVOICE|tea-shop|2"
-    assert other_invoice["invoiceSequence"] == 1
-    assert other_invoice["qrValue"] == "OTHER-INVOICE|tea-shop|1"
-    assert other_store["invoiceSequence"] == 1
-    assert other_store["qrValue"] == "SAME-INVOICE|bento-shop|1"
+    assert first_batch["startSequence"] == 1
+    assert first_batch["endSequence"] == 3
+    assert [item["qrValue"] for item in first_batch["items"]] == [
+        "SAME-INVOICE|tea-shop|1",
+        "SAME-INVOICE|tea-shop|2",
+        "SAME-INVOICE|tea-shop|3",
+    ]
+    assert second_batch["startSequence"] == 4
+    assert second_batch["endSequence"] == 5
+    assert [item["qrValue"] for item in second_batch["items"]] == [
+        "SAME-INVOICE|tea-shop|4",
+        "SAME-INVOICE|tea-shop|5",
+    ]
+    assert other_invoice["startSequence"] == 1
+    assert other_invoice["items"][0]["qrValue"] == "OTHER-INVOICE|tea-shop|1"
+    assert other_store["startSequence"] == 1
+    assert other_store["items"][0]["qrValue"] == "SAME-INVOICE|bento-shop|1"
 
 
 def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
     client, SessionLocal = context
     tea_headers = login_headers(client, "tea_owner")
     bento_headers = login_headers(client, "bento_owner")
-    qr = create_qr(client, tea_headers, "cup", "RETURN-001")
+    qr = create_qr(client, tea_headers, "RETURN-001")
 
     returned = client.post(
         "/merchant/returns/scan",
@@ -176,7 +195,7 @@ def test_expired_and_damaged_returns_are_recovered_without_refund(context):
     client, SessionLocal = context
     headers = login_headers(client)
 
-    expired_qr = create_qr(client, headers, "cup", "EXP-001")
+    expired_qr = create_qr(client, headers, "EXP-001")
     with SessionLocal() as db:
         loan = db.get(Loan, expired_qr["loanId"])
         loan.due_at = now_taipei() - timedelta(minutes=1)
@@ -191,7 +210,7 @@ def test_expired_and_damaged_returns_are_recovered_without_refund(context):
     assert expired_return.json()["refundAmount"] == 0
     assert expired_return.json()["refundReason"] == "expired"
 
-    damaged_qr = create_qr(client, headers, "meal_box", "DMG-001")
+    damaged_qr = create_qr(client, headers, "DMG-001")
     damaged_return = client.post(
         "/merchant/returns/scan",
         headers=headers,
@@ -207,8 +226,8 @@ def test_merchant_stats_are_scoped_to_current_store(context):
     tea_headers = login_headers(client, "tea_owner")
     bento_headers = login_headers(client, "bento_owner")
 
-    tea_qr = create_qr(client, tea_headers, "cup", "STAT-001")
-    create_qr(client, tea_headers, "meal_box", "STAT-002")
+    tea_qr = create_qr(client, tea_headers, "STAT-001")
+    create_qr(client, tea_headers, "STAT-002")
     client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
@@ -219,7 +238,7 @@ def test_merchant_stats_are_scoped_to_current_store(context):
     tea_sold = client.get("/merchant/stats/sold", headers=tea_headers, params=params)
     assert tea_sold.status_code == 200
     assert tea_sold.json()["totalCount"] == 2
-    assert tea_sold.json()["depositTotal"] == 70
+    assert tea_sold.json()["depositTotal"] == 40
 
     bento_sold = client.get("/merchant/stats/sold", headers=bento_headers, params=params)
     assert bento_sold.status_code == 200
@@ -238,7 +257,7 @@ def test_merchant_stats_are_scoped_to_current_store(context):
 def test_government_views_expose_overview_store_stats_and_abnormal_events(context):
     client, SessionLocal = context
     headers = login_headers(client)
-    qr = create_qr(client, headers, "cup", "VIEW-001")
+    qr = create_qr(client, headers, "VIEW-001")
     client.post(
         "/merchant/returns/scan",
         headers=headers,

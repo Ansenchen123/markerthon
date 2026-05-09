@@ -75,7 +75,7 @@ Failure:
 
 ### 1. POST `/merchant/qr-codes`
 
-店家賣出循環杯或餐盒時呼叫。後端建立一次借出紀錄，回傳 `qrValue`；前端負責把 `qrValue` 生成 QR Code 圖。
+店家賣出循環杯時呼叫。店家只需要輸入發票號碼與杯數，後端會依「商家 + 發票」自動累加序號，為每一杯建立借出紀錄並回傳一組 `qrValue`；前端負責把每個 `qrValue` 生成 QR Code 圖。
 
 QR 代表本次借出憑證，不代表實體容器 ID。容器本身不綁定識別碼。
 
@@ -98,31 +98,45 @@ Request:
 
 ```json
 {
-  "containerType": "cup",
   "invoiceCode": "INV-20260509-001",
-  "note": "optional note"
+  "cupCount": 2
 }
 ```
 
-`containerType`:
-
-| Value | Deposit |
-|---|---:|
-| `cup` | 20 |
-| `meal_box` | 50 |
+每杯押金固定為 `20`。`cupCount` 最小為 `1`，最大為 `100`。
 
 Response `201`:
 
 ```json
 {
-  "loanId": 1,
-  "qrValue": "INV-20260509-001|tea-shop|1",
-  "containerType": "cup",
   "invoiceCode": "INV-20260509-001",
-  "invoiceSequence": 1,
-  "depositAmount": 20,
-  "issuedAt": "2026-05-09T12:05:32.062579",
-  "dueAt": "2026-05-12T12:05:32.062579"
+  "storeCode": "tea-shop",
+  "cupCount": 2,
+  "startSequence": 1,
+  "endSequence": 2,
+  "totalDepositAmount": 40,
+  "items": [
+    {
+      "loanId": 1,
+      "qrValue": "INV-20260509-001|tea-shop|1",
+      "containerType": "cup",
+      "invoiceCode": "INV-20260509-001",
+      "invoiceSequence": 1,
+      "depositAmount": 20,
+      "issuedAt": "2026-05-09T12:05:32.062579",
+      "dueAt": "2026-05-12T12:05:32.062579"
+    },
+    {
+      "loanId": 2,
+      "qrValue": "INV-20260509-001|tea-shop|2",
+      "containerType": "cup",
+      "invoiceCode": "INV-20260509-001",
+      "invoiceSequence": 2,
+      "depositAmount": 20,
+      "issuedAt": "2026-05-09T12:05:32.062579",
+      "dueAt": "2026-05-12T12:05:32.062579"
+    }
+  ]
 }
 ```
 
@@ -130,7 +144,7 @@ DB changes:
 
 | Table | Change |
 |---|---|
-| `loans` | 新增一筆 `status='active'` 的借出紀錄，保存 `invoice_sequence` 與 `qr_token_hash`，不保存明文 `qrValue` |
+| `loans` | 依 `cupCount` 新增多筆 `status='active'` 的借出紀錄，保存 `invoice_sequence` 與 `qr_token_hash`，不保存明文 `qrValue` |
 
 ### 2. POST `/merchant/returns/scan`
 
@@ -308,8 +322,8 @@ TOKEN=$(curl -s -X POST http://127.0.0.1:8000/auth/login \
 QR_VALUE=$(curl -s -X POST http://127.0.0.1:8000/merchant/qr-codes \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"containerType":"cup","invoiceCode":"INV-DEMO-001"}' \
-  | python -c 'import json,sys; print(json.load(sys.stdin)["qrValue"])')
+  -d '{"invoiceCode":"INV-DEMO-001","cupCount":2}' \
+  | python -c 'import json,sys; print(json.load(sys.stdin)["items"][0]["qrValue"])')
 
 curl -s -X POST http://127.0.0.1:8000/merchant/returns/scan \
   -H "Authorization: Bearer $TOKEN" \

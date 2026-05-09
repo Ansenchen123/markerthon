@@ -12,6 +12,7 @@ from app.schemas import (
     MerchantRecoveredStatsResponse,
     MerchantSoldStatsResponse,
     QRCodeCreate,
+    QRCodeItem,
     QRCodeResponse,
     ReturnCondition,
     ReturnScanRequest,
@@ -51,33 +52,62 @@ def create_qr_code(
             Loan.invoice_code == payload.invoice_code,
         )
     )
-    invoice_sequence = int(current_max_sequence or 0) + 1
-    qr_value = generate_qr_value(payload.invoice_code, current_user.store.code, invoice_sequence)
-    loan = Loan(
-        qr_token_hash=hash_qr_value(qr_value),
-        issued_store_id=current_user.store_id,
-        invoice_code=payload.invoice_code,
-        invoice_sequence=invoice_sequence,
-        container_type=payload.container_type.value,
-        deposit_amount=DEPOSIT_AMOUNTS[payload.container_type],
-        status="active",
-        note=payload.note,
-        issued_at=issued_at,
-        due_at=due_at_from(issued_at),
-    )
-    db.add(loan)
+    start_sequence = int(current_max_sequence or 0) + 1
+    end_sequence = start_sequence + payload.cup_count - 1
+    due_at = due_at_from(issued_at)
+    qr_values_by_sequence: dict[int, str] = {}
+
+    for invoice_sequence in range(start_sequence, end_sequence + 1):
+        qr_value = generate_qr_value(payload.invoice_code, current_user.store.code, invoice_sequence)
+        qr_values_by_sequence[invoice_sequence] = qr_value
+        db.add(
+            Loan(
+                qr_token_hash=hash_qr_value(qr_value),
+                issued_store_id=current_user.store_id,
+                invoice_code=payload.invoice_code,
+                invoice_sequence=invoice_sequence,
+                container_type=ContainerType.cup.value,
+                deposit_amount=DEPOSIT_AMOUNTS[ContainerType.cup],
+                status="active",
+                issued_at=issued_at,
+                due_at=due_at,
+            )
+        )
+
     db.commit()
-    db.refresh(loan)
+    loans = list(
+        db.scalars(
+            select(Loan)
+            .where(
+                Loan.issued_store_id == current_user.store_id,
+                Loan.invoice_code == payload.invoice_code,
+                Loan.invoice_sequence >= start_sequence,
+                Loan.invoice_sequence <= end_sequence,
+            )
+            .order_by(Loan.invoice_sequence)
+        )
+    )
 
     return QRCodeResponse(
-        loanId=loan.id,
-        qrValue=qr_value,
-        containerType=loan.container_type,
-        invoiceCode=loan.invoice_code,
-        invoiceSequence=loan.invoice_sequence,
-        depositAmount=loan.deposit_amount,
-        issuedAt=loan.issued_at,
-        dueAt=loan.due_at,
+        invoiceCode=payload.invoice_code,
+        storeCode=current_user.store.code,
+        cupCount=payload.cup_count,
+        startSequence=start_sequence,
+        endSequence=end_sequence,
+        totalDepositAmount=sum(loan.deposit_amount for loan in loans),
+        items=[
+            QRCodeItem(
+                loanId=loan.id,
+                qrValue=qr_values_by_sequence[loan.invoice_sequence],
+                containerType=loan.container_type,
+                invoiceCode=loan.invoice_code,
+                invoiceSequence=loan.invoice_sequence,
+                depositAmount=loan.deposit_amount,
+                issuedAt=loan.issued_at,
+                dueAt=loan.due_at,
+            )
+            for loan in loans
+        ],
     )
 
 

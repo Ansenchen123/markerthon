@@ -38,4 +38,4 @@ The QR value returned by `/merchant/qr-codes` is a one-time loan credential form
 
 Example: `INV-20260509-001|tea-shop|1`.
 
-The invoice sequence resets for each invoice within the same store. The frontend should render the returned `qrValue` as a QR image and attach it to the cup or meal box for that transaction.
+The invoice sequence resets for each invoice within the same store. `POST /merchant/qr-codes` accepts `invoiceCode` and `cupCount`, then returns one QR item per cup. The frontend should render each returned `qrValue` as a QR image and attach it to that cup.
