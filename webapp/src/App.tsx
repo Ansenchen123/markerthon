@@ -274,7 +274,7 @@ export function App() {
   };
 
   const loadMerchantStats = async () => {
-    if (!accessToken || !store.name) {
+    if (!accessToken || store.id <= 0) {
       return;
     }
 
@@ -283,8 +283,8 @@ export function App() {
 
     try {
       const [sold, recovered] = await Promise.all([
-        api.stats.sold({ storeName: store.name, ...range }, accessToken),
-        api.stats.recovered({ storeName: store.name, ...range }, accessToken),
+        api.stats.sold({ storeId: store.id, ...range }, accessToken),
+        api.stats.recovered({ storeId: store.id, ...range }, accessToken),
       ]);
 
       setStatsState({

@@ -172,6 +172,7 @@ class MerchantSoldStatsRow(APIModel):
 
 
 class MerchantSoldStatsResponse(APIModel):
+    store_id: int = Field(alias="storeId")
     store_name: str = Field(alias="storeName")
     from_date: date = Field(alias="from")
     to_date: date = Field(alias="to")
@@ -190,6 +191,7 @@ class MerchantRecoveredStatsRow(APIModel):
 
 
 class MerchantRecoveredStatsResponse(APIModel):
+    store_id: int = Field(alias="storeId")
     store_name: str = Field(alias="storeName")
     from_date: date = Field(alias="from")
     to_date: date = Field(alias="to")

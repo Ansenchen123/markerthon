@@ -46,8 +46,8 @@ def _refund_reason(is_expired: bool, condition: ReturnCondition) -> str:
     return ",".join(reasons) if reasons else "normal"
 
 
-def _ensure_store_scope(store_name: str, current_user: MerchantUser) -> None:
-    if store_name.strip() != current_user.store.name:
+def _ensure_store_scope(store_id: int, current_user: MerchantUser) -> None:
+    if store_id != current_user.store_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Store is not allowed for this merchant")
 
 
@@ -380,13 +380,13 @@ def scan_return(
     },
 )
 def get_sold_stats(
-    store_name: str = Query(..., alias="storeName", min_length=1),
+    store_id: int = Query(..., alias="storeId", gt=0),
     from_date: date = Query(..., alias="from"),
     to_date: date = Query(..., alias="to"),
     db: Session = Depends(get_db),
     current_user: MerchantUser = Depends(get_current_user),
 ) -> MerchantSoldStatsResponse:
-    _ensure_store_scope(store_name, current_user)
+    _ensure_store_scope(store_id, current_user)
     if from_date > to_date:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from must be before or equal to to")
     rows = _merchant_report_rows(
@@ -403,6 +403,7 @@ def get_sold_stats(
     )
 
     return MerchantSoldStatsResponse(
+        storeId=current_user.store_id,
         storeName=current_user.store.name,
         **{"from": from_date, "to": to_date},
         remainingCount=remaining_count,
@@ -423,12 +424,12 @@ def get_sold_stats(
     },
 )
 def get_recovered_stats(
-    store_name: str = Query(..., alias="storeName", min_length=1),
+    store_id: int = Query(..., alias="storeId", gt=0),
     from_date: date = Query(..., alias="from"),
     to_date: date = Query(..., alias="to"),
     current_user: MerchantUser = Depends(get_current_user),
 ) -> MerchantRecoveredStatsResponse:
-    _ensure_store_scope(store_name, current_user)
+    _ensure_store_scope(store_id, current_user)
     if from_date > to_date:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from must be before or equal to to")
     rows = _merchant_report_rows(
@@ -439,6 +440,7 @@ def get_recovered_stats(
     )
 
     return MerchantRecoveredStatsResponse(
+        storeId=current_user.store_id,
         storeName=current_user.store.name,
         **{"from": from_date, "to": to_date},
         rows=_recovered_stat_rows(rows=rows, from_date=from_date, to_date=to_date),

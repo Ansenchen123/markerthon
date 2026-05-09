@@ -14,7 +14,7 @@ const today = new Date();
 
 let selectedYear = today.getFullYear();
 let selectedMonth = today.getMonth() + 1;
-let selectedStoreId = '1';
+let selectedStoreName = '青山茶飲';
 let usageTrendChart: Chart | null = null;
 let enterpriseChart: Chart | null = null;
 let regionChart: Chart | null = null;
@@ -209,14 +209,14 @@ function renderStoreCard(data: StoreDetail | null, stores: TopStores) {
     <section class="panel search-panel">
       <div class="panel-head">
         <h2>特定店家使用明細 ${icon('info')}</h2>
-        <div class="api-pill">storeId=${selectedStoreId || '-'}</div>
+        <div class="api-pill">storeName=${selectedStoreName || '-'}</div>
       </div>
       <form class="search-row" id="storeSearch">
-        <input name="storeId" type="number" value="${selectedStoreId}" min="1" placeholder="輸入 storeId" />
+        <input name="storeName" type="text" value="${selectedStoreName}" placeholder="輸入店家名稱" />
         <button type="submit">查詢</button>
       </form>
       <div class="chips">
-        ${stores.rankings.slice(0, 5).map(store => `<button type="button" data-store-id="${store.storeId}">${store.storeName}</button>`).join('')}
+        ${stores.rankings.slice(0, 5).map(store => `<button type="button" data-store-name="${store.storeName}">${store.storeName}</button>`).join('')}
       </div>
       ${data ? `
         <div class="store-result">
@@ -241,7 +241,7 @@ function renderStoreCard(data: StoreDetail | null, stores: TopStores) {
           <div class="store-icon">${icon('store')}</div>
           <div>
             <strong>尚未取得店家資料</strong>
-            <p>請輸入有效的 storeId，系統會呼叫 /government/web/stores/{storeId}。</p>
+            <p>請輸入有效的店家名稱，系統會查詢該商家的使用狀況。</p>
           </div>
         </div>
       `}
@@ -359,7 +359,7 @@ async function renderDashboard() {
     const data = await getDashboardData({
       year: selectedYear,
       month: selectedMonth,
-      storeId: selectedStoreId,
+      storeName: selectedStoreName,
     });
     const dashboard = document.querySelector<HTMLElement>('.dashboard');
     if (!dashboard) return;
@@ -408,13 +408,13 @@ function bindEvents() {
   document.getElementById('storeSearch')?.addEventListener('submit', event => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget as HTMLFormElement);
-    selectedStoreId = String(formData.get('storeId') || '1');
+    selectedStoreName = String(formData.get('storeName') || '').trim();
     renderDashboard();
   });
 
-  document.querySelectorAll<HTMLButtonElement>('[data-store-id]').forEach(button => {
+  document.querySelectorAll<HTMLButtonElement>('[data-store-name]').forEach(button => {
     button.addEventListener('click', () => {
-      selectedStoreId = button.dataset.storeId ?? '1';
+      selectedStoreName = button.dataset.storeName ?? '';
       renderDashboard();
     });
   });

@@ -97,7 +97,7 @@ export type DashboardData = {
 export type DashboardQuery = {
   year: number;
   month: number;
-  storeId: string;
+  storeName: string;
 };
 
 const API_BASE_URL = 'http://127.0.0.1:8000';
@@ -109,7 +109,7 @@ const GOVERNMENT_LOGIN = {
 
 let accessToken = localStorage.getItem(TOKEN_KEY) ?? '';
 
-function buildQuery(query: Omit<DashboardQuery, 'storeId'>, limit?: number) {
+function buildQuery(query: Omit<DashboardQuery, 'storeName'>, limit?: number) {
   const params = new URLSearchParams({
     year: String(query.year),
     month: String(query.month),
@@ -167,11 +167,11 @@ async function authenticatedRequest<T>(path: string): Promise<T> {
   }
 }
 
-export async function getMonthlyUsage(query: Omit<DashboardQuery, 'storeId'>) {
+export async function getMonthlyUsage(query: Omit<DashboardQuery, 'storeName'>) {
   return authenticatedRequest<MonthlyUsage>(`/government/web/monthly-usage?${buildQuery(query)}`);
 }
 
-export async function getEnterpriseCounts(query: Omit<DashboardQuery, 'storeId'>) {
+export async function getEnterpriseCounts(query: Omit<DashboardQuery, 'storeName'>) {
   return authenticatedRequest<EnterpriseCounts>(`/government/web/enterprise-counts?${buildQuery(query)}`);
 }
 
@@ -179,18 +179,24 @@ export async function getRegionDistribution() {
   return authenticatedRequest<RegionDistribution>('/government/web/region-distribution');
 }
 
-export async function getTopStores(query: Omit<DashboardQuery, 'storeId'>, limit = 10) {
+export async function getTopStores(query: Omit<DashboardQuery, 'storeName'>, limit = 10) {
   return authenticatedRequest<TopStores>(`/government/web/top-stores?${buildQuery(query, limit)}`);
 }
 
 export async function getStoreDetail(query: DashboardQuery) {
-  const storeId = Number(query.storeId);
-  if (!Number.isFinite(storeId) || storeId <= 0) {
+  const storeName = query.storeName.trim();
+  if (!storeName) {
     return null;
   }
 
+  const params = new URLSearchParams({
+    year: String(query.year),
+    month: String(query.month),
+    storeName,
+  });
+
   return authenticatedRequest<StoreDetail>(
-    `/government/web/stores/${storeId}?${buildQuery({ year: query.year, month: query.month })}`,
+    `/government/web/stores?${params.toString()}`,
   ).catch(() => null);
 }
 

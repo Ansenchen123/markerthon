@@ -87,7 +87,7 @@ export type MerchantReturnScanResponse = {
 };
 
 export type MerchantStatsParams = {
-  storeName: string;
+  storeId: number;
   from: string;
   to: string;
 };
@@ -113,6 +113,7 @@ export type MerchantRecoveredStatsRow = MerchantBaseStatsRow & {
 };
 
 export type MerchantSoldStatsResponse = {
+  storeId: number;
   storeName: string;
   from: string;
   to: string;
@@ -121,6 +122,7 @@ export type MerchantSoldStatsResponse = {
 };
 
 export type MerchantRecoveredStatsResponse = {
+  storeId: number;
   storeName: string;
   from: string;
   to: string;
@@ -129,7 +131,7 @@ export type MerchantRecoveredStatsResponse = {
 
 function buildStatsPath(path: string, params: MerchantStatsParams) {
   const search = new URLSearchParams({
-    storeName: params.storeName,
+    storeId: String(params.storeId),
     from: params.from,
     to: params.to,
   });

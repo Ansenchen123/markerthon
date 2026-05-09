@@ -199,20 +199,15 @@ Response `200`:
 }
 ```
 
-## GET `/government/web/stores/{storeId}`
+## GET `/government/web/stores`
 
-特定店家狀況查詢。
-
-Path:
-
-| Name | Example |
-|---|---|
-| `storeId` | `1` |
+特定店家狀況查詢。政府端用店家名稱查詢，不用商家 ID。
 
 Query:
 
 | Name | Required | Example |
 |---|---|---|
+| `storeName` | yes | `青山茶飲` |
 | `year` | no | `2026` |
 | `month` | no | `5` |
 

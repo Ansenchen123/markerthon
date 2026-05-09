@@ -58,7 +58,7 @@ Default daily CSV report path: `data/daily_reports/daily_report_YYYY-MM-DD.csv`.
 - `GET /government/web/enterprise-counts`
 - `GET /government/web/region-distribution`
 - `GET /government/web/top-stores`
-- `GET /government/web/stores/{storeId}`
+- `GET /government/web/stores?storeName=<name>`
 
 The QR value returned by `/merchant/qr-codes` is a one-time loan credential formatted as:
 
