@@ -36,6 +36,9 @@ type StoreInfo = {
   item: string;
 };
 
+const SCAN_LOCK_MS = 700;
+const SCAN_COOLDOWN_MS = 2500;
+
 type CreatedQrCode = MerchantQrCodeResponse & {
   imageUrl: string;
 };
@@ -684,10 +687,9 @@ export function App() {
             {scanView === 'reader' ? (
               <div className="scanner-view">
                 <CameraQrScanner
-                  isPaused={isReturning}
                   onDetected={(value) => {
                     setReturnQrValue(value);
-                    void scanReturn(value);
+                    return scanReturn(value);
                   }}
                 />
                 <h2>讀取 QRCode</h2>
@@ -846,17 +848,18 @@ export function App() {
 }
 
 function CameraQrScanner({
-  isPaused,
   onDetected,
 }: {
-  isPaused: boolean;
-  onDetected: (value: string) => void;
+  onDetected: (value: string) => Promise<void> | void;
 }) {
   const elementIdRef = useRef(`qr-reader-${Math.random().toString(36).slice(2)}`);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const detectedRef = useRef(false);
+  const cooldownUntilRef = useRef(0);
+  const cooldownTimerRef = useRef<number | null>(null);
   const onDetectedRef = useRef(onDetected);
   const [cameraError, setCameraError] = useState('');
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
 
   useEffect(() => {
     onDetectedRef.current = onDetected;
@@ -865,7 +868,43 @@ function CameraQrScanner({
   useEffect(() => {
     let isMounted = true;
     detectedRef.current = false;
+    setCooldownSeconds(0);
     setCameraError('');
+
+    const stopCooldownTimer = () => {
+      if (cooldownTimerRef.current !== null) {
+        window.clearInterval(cooldownTimerRef.current);
+        cooldownTimerRef.current = null;
+      }
+    };
+
+    const updateCooldownSeconds = () => {
+      if (cooldownUntilRef.current <= 0) {
+        setCooldownSeconds(0);
+        stopCooldownTimer();
+        return;
+      }
+
+      const remainingMs = cooldownUntilRef.current - Date.now();
+      const nextSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+
+      setCooldownSeconds(nextSeconds);
+
+      if (nextSeconds === 0) {
+        cooldownUntilRef.current = 0;
+        stopCooldownTimer();
+      }
+    };
+
+    const startCooldownTimer = () => {
+      updateCooldownSeconds();
+
+      if (cooldownTimerRef.current !== null) {
+        return;
+      }
+
+      cooldownTimerRef.current = window.setInterval(updateCooldownSeconds, 200);
+    };
 
     const scanner = new Html5Qrcode(elementIdRef.current, {
       formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
@@ -877,28 +916,45 @@ function CameraQrScanner({
       .start(
         { facingMode: 'environment' },
         {
-          fps: 10,
-          qrbox: { width: 220, height: 220 },
-          aspectRatio: 1,
+          fps: 12,
+          qrbox: (viewfinderWidth, viewfinderHeight) => {
+            const edge = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.92);
+            return { width: edge, height: edge };
+          },
         },
         async (decodedText) => {
           const qrValue = decodedText.trim();
+          const now = Date.now();
 
-          if (detectedRef.current || !qrValue) {
+          if (
+            detectedRef.current ||
+            !qrValue ||
+            now < cooldownUntilRef.current
+          ) {
             return;
           }
 
           detectedRef.current = true;
+          cooldownUntilRef.current = now + SCAN_COOLDOWN_MS;
+          startCooldownTimer();
 
           try {
-            if (scanner.getState() === Html5QrcodeScannerState.SCANNING) {
-              await scanner.stop();
+            await onDetectedRef.current(qrValue);
+          } finally {
+            if (!isMounted) {
+              return;
             }
-          } catch {
-            // The browser may already have closed the stream while unmounting.
-          }
 
-          onDetectedRef.current(qrValue);
+            window.setTimeout(() => {
+              detectedRef.current = false;
+
+              if (!isMounted) {
+                return;
+              }
+
+              // The scanner keeps running; this lock only prevents duplicate API calls.
+            }, SCAN_LOCK_MS);
+          }
         },
         () => undefined,
       )
@@ -917,6 +973,7 @@ function CameraQrScanner({
     return () => {
       isMounted = false;
       detectedRef.current = true;
+      stopCooldownTimer();
       const scannerInstance = scannerRef.current;
       scannerRef.current = null;
 
@@ -946,28 +1003,6 @@ function CameraQrScanner({
     };
   }, []);
 
-  useEffect(() => {
-    const scanner = scannerRef.current;
-
-    if (!scanner) {
-      return;
-    }
-
-    try {
-      const state = scanner.getState();
-
-      if (isPaused && state === Html5QrcodeScannerState.SCANNING) {
-        scanner.pause(true);
-      }
-
-      if (!isPaused && state === Html5QrcodeScannerState.PAUSED && !detectedRef.current) {
-        scanner.resume();
-      }
-    } catch {
-      // Camera state can change while permissions are being resolved.
-    }
-  }, [isPaused]);
-
   return (
     <div className="scanner-lens">
       <div id={elementIdRef.current} className="camera-reader" />
@@ -976,6 +1011,11 @@ function CameraQrScanner({
       <span className="corner bottom-left" />
       <span className="corner bottom-right" />
       {!cameraError && <div className="scan-line" />}
+      {!cameraError && cooldownSeconds > 0 && (
+        <div className="scan-cooldown" aria-live="polite">
+          冷卻 {cooldownSeconds} 秒
+        </div>
+      )}
       {cameraError && (
         <div className="camera-error">
           <i className="fa-solid fa-video-slash" aria-hidden="true" />
