@@ -55,6 +55,15 @@ def _login(client: TestClient, user_email: str, path: str = "/auth/login") -> di
     return {"Authorization": f"Bearer {body['accessToken']}"}
 
 
+def _merchant_session(client: TestClient, user_email: str) -> dict[str, Any]:
+    response = client.post("/auth/login", json={"userEmail": user_email, "password": DEMO_PASSWORD})
+    body = _request_json(response, 200)
+    return {
+        "headers": {"Authorization": f"Bearer {body['accessToken']}"},
+        "storeId": body["store"]["id"],
+    }
+
+
 def _at(day, hour: int, minute: int = 0) -> datetime:
     return datetime.combine(day, time(hour=hour, minute=minute))
 
@@ -73,7 +82,9 @@ def reset_demo_business_data(db: Session) -> None:
 def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
     today = now_taipei().date()
     start_date = today - timedelta(days=days - 1)
-    merchant_headers = {key: _login(client, email) for key, email in MERCHANT_EMAILS.items()}
+    merchant_sessions = {key: _merchant_session(client, email) for key, email in MERCHANT_EMAILS.items()}
+    merchant_headers = {key: session["headers"] for key, session in merchant_sessions.items()}
+    merchant_store_ids = {key: session["storeId"] for key, session in merchant_sessions.items()}
     government_headers = _login(client, "gov.admin@example.com", path="/government/auth/login")
     created_batches: list[dict[str, Any]] = []
 
@@ -183,6 +194,7 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
             "/merchant/stats/sold",
             headers=merchant_headers["tea"],
             params={
+                "storeId": merchant_store_ids["tea"],
                 "from": start_date.isoformat(),
                 "to": today.isoformat(),
             },

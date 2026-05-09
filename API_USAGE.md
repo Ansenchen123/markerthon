@@ -280,19 +280,20 @@ DB changes on accepted return:
 
 ### 3. GET `/merchant/stats/sold`
 
-查詢登入商家在日期區間內自己每天賣出多少循環杯/餐盒。商家端不提供容器類型 filter；後端會一次回傳全部類型，並在每天的 row 裡列出總數、杯數與餐盒數。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
+查詢指定商家在日期區間內每天賣出多少循環杯/餐盒。`storeId` 必須等於登入商家 JWT 所屬店家；若傳入其他商家會回 `403`。商家端不提供容器類型 filter；後端會一次回傳全部類型，並在每天的 row 裡列出總數、杯數與餐盒數。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
 
 Query params:
 
 | Name | Required | Example |
 |---|---|---|
+| `storeId` | yes | `1` |
 | `from` | yes | `2026-05-08` |
 | `to` | yes | `2026-05-10` |
 
 Example:
 
 ```http
-GET /merchant/stats/sold?from=2026-05-08&to=2026-05-10
+GET /merchant/stats/sold?storeId=1&from=2026-05-08&to=2026-05-10
 Authorization: Bearer <accessToken>
 ```
 
@@ -330,23 +331,24 @@ CSV read:
 
 | Source | Filter |
 |---|---|
-| `daily_report_YYYY-MM-DD.csv` | `eventType = sold`、`storeId = current_store_id`、`occurredAt` date between `from` and `to` |
+| `daily_report_YYYY-MM-DD.csv` | `eventType = sold`、`storeId = query storeId`、`occurredAt` date between `from` and `to` |
 
 ### 4. GET `/merchant/stats/recovered`
 
-查詢登入商家在日期區間內自己每天回收多少循環杯/餐盒。商家端不提供容器類型 filter；後端會一次回傳全部類型，並在每天的 row 裡列出總數、杯數、餐盒數與回收狀態分項。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
+查詢指定商家在日期區間內每天回收多少循環杯/餐盒。`storeId` 必須等於登入商家 JWT 所屬店家；若傳入其他商家會回 `403`。商家端不提供容器類型 filter；後端會一次回傳全部類型，並在每天的 row 裡列出總數、杯數、餐盒數與回收狀態分項。日期區間含頭含尾，查幾天就回傳幾筆；沒有資料的日期會回 0。
 
 Query params:
 
 | Name | Required | Example |
 |---|---|---|
+| `storeId` | yes | `1` |
 | `from` | yes | `2026-05-08` |
 | `to` | yes | `2026-05-10` |
 
 Example:
 
 ```http
-GET /merchant/stats/recovered?from=2026-05-08&to=2026-05-10
+GET /merchant/stats/recovered?storeId=1&from=2026-05-08&to=2026-05-10
 Authorization: Bearer <accessToken>
 ```
 
@@ -396,7 +398,7 @@ CSV read:
 
 | Source | Filter |
 |---|---|
-| `daily_report_YYYY-MM-DD.csv` | `eventType = recovered`、`storeId = current_store_id`、`occurredAt` date between `from` and `to` |
+| `daily_report_YYYY-MM-DD.csv` | `eventType = recovered`、`storeId = query storeId`、`occurredAt` date between `from` and `to` |
 
 ## cURL 全流程範例
 
@@ -417,10 +419,10 @@ curl -s -X POST http://127.0.0.1:8000/merchant/returns/scan \
   -H 'Content-Type: application/json' \
   -d "{\"qrValue\":\"$QR_VALUE\"}"
 
-curl -s "http://127.0.0.1:8000/merchant/stats/sold?from=2026-05-08&to=2026-05-10" \
+curl -s "http://127.0.0.1:8000/merchant/stats/sold?storeId=1&from=2026-05-08&to=2026-05-10" \
   -H "Authorization: Bearer $TOKEN"
 
-curl -s "http://127.0.0.1:8000/merchant/stats/recovered?from=2026-05-08&to=2026-05-10" \
+curl -s "http://127.0.0.1:8000/merchant/stats/recovered?storeId=1&from=2026-05-08&to=2026-05-10" \
   -H "Authorization: Bearer $TOKEN"
 ```
 

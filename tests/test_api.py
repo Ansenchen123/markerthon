@@ -12,7 +12,7 @@ from sqlalchemy.orm import sessionmaker
 from app.daily_reports import daily_report_path, read_report_rows
 from app.database import Base, get_db
 from app.main import app
-from app.models import Loan, RefundLedger, ScanEvent
+from app.models import Loan, RefundLedger, ScanEvent, Store
 from app.seed import seed_demo_data
 from app.time_utils import now_taipei
 from app.views import create_sqlite_views
@@ -90,9 +90,10 @@ def stats_range() -> dict[str, str]:
     }
 
 
-def merchant_stats_range() -> dict[str, str]:
+def merchant_stats_range(store_id: int) -> dict[str, str]:
     today = now_taipei().date()
     return {
+        "storeId": str(store_id),
         "from": (today - timedelta(days=1)).isoformat(),
         "to": (today + timedelta(days=1)).isoformat(),
     }
@@ -201,7 +202,7 @@ def test_government_login_and_role_isolation(context):
     merchant_on_government = client.get("/government/overview", headers=merchant_headers, params=params)
     assert merchant_on_government.status_code == 403
 
-    government_on_merchant = client.get("/merchant/stats/sold", headers=gov_headers, params=merchant_stats_range())
+    government_on_merchant = client.get("/merchant/stats/sold", headers=gov_headers, params=merchant_stats_range(1))
     assert government_on_merchant.status_code == 403
 
 
@@ -484,15 +485,19 @@ def test_merchant_stats_are_scoped_to_current_store(context):
         first_loan = db.get(Loan, tea_qr["loanId"])
         second_loan = db.get(Loan, second_tea_qr["loanId"])
         meal_box_loan = db.get(Loan, tea_meal_box_qr["loanId"])
+        tea_store_id = db.scalar(select(Store.id).where(Store.code == "tea-shop"))
+        bento_store_id = db.scalar(select(Store.id).where(Store.code == "bento-shop"))
         first_loan.returned_count = 42
         second_loan.cup_count = 99
         meal_box_loan.cup_count = 88
         db.commit()
 
-    params = merchant_stats_range()
+    tea_params = merchant_stats_range(tea_store_id)
+    bento_params = merchant_stats_range(bento_store_id)
     today = now_taipei().date().isoformat()
-    tea_sold = client.get("/merchant/stats/sold", headers=tea_headers, params=params)
+    tea_sold = client.get("/merchant/stats/sold", headers=tea_headers, params=tea_params)
     assert tea_sold.status_code == 200
+    assert tea_sold.json()["storeId"] == tea_store_id
     assert len(tea_sold.json()["rows"]) == 3
     assert "containerType" not in tea_sold.json()
     tea_sold_today = next(row for row in tea_sold.json()["rows"] if row["statDate"] == today)
@@ -501,13 +506,17 @@ def test_merchant_stats_are_scoped_to_current_store(context):
     assert tea_sold_today["mealBoxCount"] == 2
     assert "depositTotal" not in tea_sold.json()
 
-    bento_sold = client.get("/merchant/stats/sold", headers=bento_headers, params=params)
+    wrong_store = client.get("/merchant/stats/sold", headers=tea_headers, params=bento_params)
+    assert wrong_store.status_code == 403
+
+    bento_sold = client.get("/merchant/stats/sold", headers=bento_headers, params=bento_params)
     assert bento_sold.status_code == 200
     assert len(bento_sold.json()["rows"]) == 3
     assert sum(row["totalCount"] for row in bento_sold.json()["rows"]) == 0
 
-    bento_recovered = client.get("/merchant/stats/recovered", headers=bento_headers, params=params)
+    bento_recovered = client.get("/merchant/stats/recovered", headers=bento_headers, params=bento_params)
     assert bento_recovered.status_code == 200
+    assert bento_recovered.json()["storeId"] == bento_store_id
     assert len(bento_recovered.json()["rows"]) == 3
     assert "containerType" not in bento_recovered.json()
     bento_recovered_today = next(row for row in bento_recovered.json()["rows"] if row["statDate"] == today)
@@ -516,7 +525,7 @@ def test_merchant_stats_are_scoped_to_current_store(context):
     assert bento_recovered_today["mealBoxCount"] == 1
     assert bento_recovered_today["crossStoreCount"] == 2
 
-    tea_recovered = client.get("/merchant/stats/recovered", headers=tea_headers, params=params)
+    tea_recovered = client.get("/merchant/stats/recovered", headers=tea_headers, params=tea_params)
     assert tea_recovered.status_code == 200
     assert len(tea_recovered.json()["rows"]) == 3
     assert sum(row["totalCount"] for row in tea_recovered.json()["rows"]) == 0
