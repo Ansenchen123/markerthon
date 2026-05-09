@@ -1,8 +1,9 @@
 from datetime import datetime
 from enum import Enum
+import re
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class APIModel(BaseModel):
@@ -22,20 +23,37 @@ class ReturnCondition(str, Enum):
 
 
 class LoginRequest(APIModel):
-    username: str
+    user_email: str = Field(alias="userEmail", min_length=3, max_length=255)
     password: str
+
+    @field_validator("user_email")
+    @classmethod
+    def validate_user_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized):
+            raise ValueError("Invalid email format")
+        return normalized
 
 
 class MerchantRegisterRequest(APIModel):
-    username: str = Field(min_length=1, max_length=80)
+    user_email: str = Field(alias="userEmail", min_length=3, max_length=255)
     password: str = Field(min_length=8, max_length=128)
-    store_code: str = Field(alias="storeCode", min_length=1, max_length=40)
     store_name: str = Field(alias="storeName", min_length=1, max_length=120)
+
+    @field_validator("user_email")
+    @classmethod
+    def validate_user_email(cls, value: str) -> str:
+        return LoginRequest.validate_user_email(value)
 
 
 class GovernmentRegisterRequest(APIModel):
-    username: str = Field(min_length=1, max_length=80)
+    user_email: str = Field(alias="userEmail", min_length=3, max_length=255)
     password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("user_email")
+    @classmethod
+    def validate_user_email(cls, value: str) -> str:
+        return LoginRequest.validate_user_email(value)
 
 
 class StoreResponse(APIModel):
@@ -52,7 +70,7 @@ class LoginResponse(APIModel):
 
 class GovernmentUserResponse(APIModel):
     id: int
-    username: str
+    user_email: str = Field(alias="userEmail")
 
 
 class GovernmentLoginResponse(APIModel):

@@ -33,6 +33,7 @@ class MerchantUser(Base):
     id = Column(Integer, primary_key=True)
     store_id = Column(Integer, ForeignKey("stores.id"), nullable=False, index=True)
     username = Column(String(80), nullable=False, unique=True, index=True)
+    user_email = Column(String(255), nullable=True, unique=True, index=True)
     password_hash = Column(String(255), nullable=False)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, nullable=False, default=now_taipei)
@@ -45,6 +46,7 @@ class GovernmentUser(Base):
 
     id = Column(Integer, primary_key=True)
     username = Column(String(80), nullable=False, unique=True, index=True)
+    user_email = Column(String(255), nullable=True, unique=True, index=True)
     password_hash = Column(String(255), nullable=False)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, nullable=False, default=now_taipei)

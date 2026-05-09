@@ -34,7 +34,46 @@ def ensure_sqlite_compatibility() -> None:
                 )
             )
             conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_government_users_username ON government_users (username)"))
+            table_names.add("government_users")
+            inspector = inspect(engine)
 
+        if "merchant_users" in table_names:
+            merchant_columns = {column["name"] for column in inspector.get_columns("merchant_users")}
+            if "user_email" not in merchant_columns:
+                conn.execute(text("ALTER TABLE merchant_users ADD COLUMN user_email VARCHAR(255)"))
+                conn.execute(
+                    text(
+                        """
+                        UPDATE merchant_users
+                        SET user_email = CASE
+                            WHEN username LIKE '%@%' THEN lower(username)
+                            ELSE lower(username || '@example.local')
+                        END
+                        WHERE user_email IS NULL
+                        """
+                    )
+                )
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_merchant_users_user_email ON merchant_users (user_email)"))
+
+        if "government_users" in table_names:
+            government_columns = {column["name"] for column in inspector.get_columns("government_users")}
+            if "user_email" not in government_columns:
+                conn.execute(text("ALTER TABLE government_users ADD COLUMN user_email VARCHAR(255)"))
+                conn.execute(
+                    text(
+                        """
+                        UPDATE government_users
+                        SET user_email = CASE
+                            WHEN username LIKE '%@%' THEN lower(username)
+                            ELSE lower(username || '@example.local')
+                        END
+                        WHERE user_email IS NULL
+                        """
+                    )
+                )
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_government_users_user_email ON government_users (user_email)"))
+
+    inspector = inspect(engine)
     if not inspector.has_table("loans"):
         return
 

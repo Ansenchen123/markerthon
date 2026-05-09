@@ -16,12 +16,13 @@ Default database path: `data/reusable_container.db`.
 
 ## Demo Accounts
 
-| Store | Username | Password |
+| Store | User Email | Password |
 |---|---|---|
-| 青山茶飲 | `tea_owner` | `password123` |
-| 晨光便當 | `bento_owner` | `password123` |
-| 巷口咖啡 | `cafe_owner` | `password123` |
-| 政府端管理 | `gov_admin` | `password123` |
+| 青山茶飲 | `tea.owner@example.com` | `password123` |
+| 青山茶飲 | `tea.staff@example.com` | `password123` |
+| 晨光便當 | `bento.owner@example.com` | `password123` |
+| 巷口咖啡 | `cafe.owner@example.com` | `password123` |
+| 政府端管理 | `gov.admin@example.com` | `password123` |
 
 ## Main Merchant APIs
 

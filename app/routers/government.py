@@ -81,21 +81,25 @@ def _bounded_loans(db: Session, from_at: datetime, to_at: datetime):
 
 
 def _government_login_response(user: GovernmentUser) -> GovernmentLoginResponse:
-    token = create_access_token({"sub": user.username, "userId": user.id, "role": "government"})
+    token = create_access_token({"sub": user.user_email, "userId": user.id, "role": "government"})
     return GovernmentLoginResponse(
         accessToken=token,
         tokenType="bearer",
-        user=GovernmentUserResponse(id=user.id, username=user.username),
+        user=GovernmentUserResponse(id=user.id, userEmail=user.user_email),
     )
 
 
 @router.post("/auth/register", response_model=GovernmentLoginResponse, status_code=status.HTTP_201_CREATED)
 def government_register(payload: GovernmentRegisterRequest, db: Session = Depends(get_db)) -> GovernmentLoginResponse:
-    existing_user = db.scalar(select(GovernmentUser).where(GovernmentUser.username == payload.username))
+    existing_user = db.scalar(select(GovernmentUser).where(GovernmentUser.user_email == payload.user_email))
     if existing_user is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User email already exists")
 
-    user = GovernmentUser(username=payload.username, password_hash=hash_password(payload.password))
+    user = GovernmentUser(
+        username=payload.user_email,
+        user_email=payload.user_email,
+        password_hash=hash_password(payload.password),
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -104,9 +108,9 @@ def government_register(payload: GovernmentRegisterRequest, db: Session = Depend
 
 @router.post("/auth/login", response_model=GovernmentLoginResponse)
 def government_login(payload: LoginRequest, db: Session = Depends(get_db)) -> GovernmentLoginResponse:
-    user = db.scalar(select(GovernmentUser).where(GovernmentUser.username == payload.username))
+    user = db.scalar(select(GovernmentUser).where(GovernmentUser.user_email == payload.user_email))
     if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
     return _government_login_response(user)
 

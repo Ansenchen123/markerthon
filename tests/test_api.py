@@ -48,14 +48,14 @@ def context(tmp_path):
     engine.dispose()
 
 
-def login_headers(client: TestClient, username: str = "tea_owner") -> dict[str, str]:
-    response = client.post("/auth/login", json={"username": username, "password": "password123"})
+def login_headers(client: TestClient, user_email: str = "tea.owner@example.com") -> dict[str, str]:
+    response = client.post("/auth/login", json={"userEmail": user_email, "password": "password123"})
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['accessToken']}"}
 
 
 def government_headers(client: TestClient) -> dict[str, str]:
-    response = client.post("/government/auth/login", json={"username": "gov_admin", "password": "password123"})
+    response = client.post("/government/auth/login", json={"userEmail": "gov.admin@example.com", "password": "password123"})
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['accessToken']}"}
 
@@ -85,13 +85,16 @@ def stats_range() -> dict[str, str]:
 def test_login_success_and_failure(context):
     client, _ = context
 
-    success = client.post("/auth/login", json={"username": "tea_owner", "password": "password123"})
+    success = client.post("/auth/login", json={"userEmail": "tea.owner@example.com", "password": "password123"})
     assert success.status_code == 200
     assert success.json()["accessToken"]
     assert success.json()["store"]["code"] == "tea-shop"
 
-    failure = client.post("/auth/login", json={"username": "tea_owner", "password": "bad"})
+    failure = client.post("/auth/login", json={"userEmail": "tea.owner@example.com", "password": "bad"})
     assert failure.status_code == 401
+
+    invalid_email = client.post("/auth/login", json={"userEmail": "not-an-email", "password": "password123"})
+    assert invalid_email.status_code == 422
 
 
 def test_merchant_register_creates_store_user_and_token(context):
@@ -100,15 +103,15 @@ def test_merchant_register_creates_store_user_and_token(context):
     response = client.post(
         "/auth/register",
         json={
-            "username": "new_merchant",
+            "userEmail": "new.merchant@example.com",
             "password": "password123",
-            "storeCode": "new-shop",
             "storeName": "新店家",
         },
     )
     assert response.status_code == 201
     assert response.json()["accessToken"]
-    assert response.json()["store"]["code"] == "new-shop"
+    assert response.json()["store"]["code"].startswith("store-")
+    assert response.json()["store"]["name"] == "新店家"
     headers = {"Authorization": f"Bearer {response.json()['accessToken']}"}
 
     qr = client.post(
@@ -117,29 +120,28 @@ def test_merchant_register_creates_store_user_and_token(context):
         json={"invoiceCode": "NEW-001", "cupCount": 1},
     )
     assert qr.status_code == 201
-    assert qr.json()["qrValue"] == "NEW-001|new-shop"
+    assert qr.json()["qrValue"] == f"NEW-001|{response.json()['store']['code']}"
 
     duplicate_user = client.post(
         "/auth/register",
         json={
-            "username": "new_merchant",
+            "userEmail": "new.merchant@example.com",
             "password": "password123",
-            "storeCode": "another-new-shop",
             "storeName": "另一新店",
         },
     )
     assert duplicate_user.status_code == 409
 
-    duplicate_store = client.post(
+    same_store_second_user = client.post(
         "/auth/register",
         json={
-            "username": "another_merchant",
+            "userEmail": "another.merchant@example.com",
             "password": "password123",
-            "storeCode": "new-shop",
             "storeName": "新店家",
         },
     )
-    assert duplicate_store.status_code == 409
+    assert same_store_second_user.status_code == 201
+    assert same_store_second_user.json()["store"]["code"] == response.json()["store"]["code"]
 
 
 def test_government_login_and_role_isolation(context):
@@ -163,11 +165,11 @@ def test_government_register_creates_user_and_token(context):
 
     response = client.post(
         "/government/auth/register",
-        json={"username": "new_gov", "password": "password123"},
+        json={"userEmail": "new.gov@example.com", "password": "password123"},
     )
     assert response.status_code == 201
     assert response.json()["accessToken"]
-    assert response.json()["user"]["username"] == "new_gov"
+    assert response.json()["user"]["userEmail"] == "new.gov@example.com"
     headers = {"Authorization": f"Bearer {response.json()['accessToken']}"}
 
     overview = client.get("/government/overview", headers=headers, params=stats_range())
@@ -175,7 +177,7 @@ def test_government_register_creates_user_and_token(context):
 
     duplicate = client.post(
         "/government/auth/register",
-        json={"username": "new_gov", "password": "password123"},
+        json={"userEmail": "new.gov@example.com", "password": "password123"},
     )
     assert duplicate.status_code == 409
 
@@ -199,8 +201,8 @@ def test_create_qr_code_uses_cup_count_without_exposing_amounts(context):
 
 def test_invoice_qr_is_reused_and_count_accumulates_per_store(context):
     client, _ = context
-    tea_headers = login_headers(client, "tea_owner")
-    bento_headers = login_headers(client, "bento_owner")
+    tea_headers = login_headers(client, "tea.owner@example.com")
+    bento_headers = login_headers(client, "bento.owner@example.com")
 
     first_batch = create_qr_batch(client, tea_headers, invoice="SAME-INVOICE", cup_count=3)
     second_batch = create_qr_batch(client, tea_headers, invoice="SAME-INVOICE", cup_count=2)
@@ -221,8 +223,8 @@ def test_invoice_qr_is_reused_and_count_accumulates_per_store(context):
 
 def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
     client, SessionLocal = context
-    tea_headers = login_headers(client, "tea_owner")
-    bento_headers = login_headers(client, "bento_owner")
+    tea_headers = login_headers(client, "tea.owner@example.com")
+    bento_headers = login_headers(client, "bento.owner@example.com")
     qr = create_qr(client, tea_headers, "RETURN-001")
 
     returned = client.post(
@@ -258,8 +260,8 @@ def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
 
 def test_invoice_qr_returns_one_cup_per_scan(context):
     client, SessionLocal = context
-    tea_headers = login_headers(client, "tea_owner")
-    bento_headers = login_headers(client, "bento_owner")
+    tea_headers = login_headers(client, "tea.owner@example.com")
+    bento_headers = login_headers(client, "bento.owner@example.com")
     qr = create_qr_batch(client, tea_headers, "PARTIAL-001", cup_count=3)
 
     first_return = client.post(
@@ -351,8 +353,8 @@ def test_expired_and_damaged_returns_are_recovered_without_refund(context):
 
 def test_merchant_stats_are_scoped_to_current_store(context):
     client, _ = context
-    tea_headers = login_headers(client, "tea_owner")
-    bento_headers = login_headers(client, "bento_owner")
+    tea_headers = login_headers(client, "tea.owner@example.com")
+    bento_headers = login_headers(client, "bento.owner@example.com")
 
     tea_qr = create_qr(client, tea_headers, "STAT-001")
     create_qr(client, tea_headers, "STAT-002")
@@ -410,8 +412,8 @@ def test_government_views_expose_overview_store_stats_and_abnormal_events(contex
 
 def test_government_read_only_apis_cover_overview_stores_invoices_and_anomalies(context):
     client, _ = context
-    tea_headers = login_headers(client, "tea_owner")
-    bento_headers = login_headers(client, "bento_owner")
+    tea_headers = login_headers(client, "tea.owner@example.com")
+    bento_headers = login_headers(client, "bento.owner@example.com")
     gov_headers = government_headers(client)
 
     qr = create_qr_batch(client, tea_headers, "GOV-001", cup_count=2)

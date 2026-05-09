@@ -1,3 +1,5 @@
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,7 +16,7 @@ router = APIRouter(tags=["auth"])
 def _merchant_token(user: MerchantUser) -> str:
     return create_access_token(
         {
-            "sub": user.username,
+            "sub": user.user_email,
             "userId": user.id,
             "storeId": user.store_id,
             "role": "merchant",
@@ -30,23 +32,31 @@ def _login_response(user: MerchantUser) -> LoginResponse:
     )
 
 
+def _generate_store_code(db: Session) -> str:
+    for _ in range(10):
+        code = f"store-{secrets.token_hex(4)}"
+        exists = db.scalar(select(Store.id).where(Store.code == code))
+        if exists is None:
+            return code
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to generate store code")
+
+
 @router.post("/auth/register", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)
 def register(payload: MerchantRegisterRequest, db: Session = Depends(get_db)) -> LoginResponse:
-    existing_user = db.scalar(select(MerchantUser).where(MerchantUser.username == payload.username))
+    existing_user = db.scalar(select(MerchantUser).where(MerchantUser.user_email == payload.user_email))
     if existing_user is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User email already exists")
 
-    existing_store = db.scalar(select(Store).where(Store.code == payload.store_code))
-    if existing_store is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Store code already exists")
-
-    store = Store(code=payload.store_code, name=payload.store_name)
-    db.add(store)
-    db.flush()
+    store = db.scalar(select(Store).where(Store.name == payload.store_name))
+    if store is None:
+        store = Store(code=_generate_store_code(db), name=payload.store_name)
+        db.add(store)
+        db.flush()
 
     user = MerchantUser(
         store_id=store.id,
-        username=payload.username,
+        username=payload.user_email,
+        user_email=payload.user_email,
         password_hash=hash_password(payload.password),
     )
     db.add(user)
@@ -57,8 +67,8 @@ def register(payload: MerchantRegisterRequest, db: Session = Depends(get_db)) ->
 
 @router.post("/auth/login", response_model=LoginResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
-    user = db.scalar(select(MerchantUser).where(MerchantUser.username == payload.username))
+    user = db.scalar(select(MerchantUser).where(MerchantUser.user_email == payload.user_email))
     if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
     return _login_response(user)

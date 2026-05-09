@@ -24,12 +24,13 @@ uvicorn app.main:app --reload
 
 Demo accounts:
 
-| Store | Username | Password |
+| Store | User Email | Password |
 |---|---|---|
-| 青山茶飲 | `tea_owner` | `password123` |
-| 晨光便當 | `bento_owner` | `password123` |
-| 巷口咖啡 | `cafe_owner` | `password123` |
-| 政府端管理 | `gov_admin` | `password123` |
+| 青山茶飲 | `tea.owner@example.com` | `password123` |
+| 青山茶飲 | `tea.staff@example.com` | `password123` |
+| 晨光便當 | `bento.owner@example.com` | `password123` |
+| 巷口咖啡 | `cafe.owner@example.com` | `password123` |
+| 政府端管理 | `gov.admin@example.com` | `password123` |
 
 ## Auth
 
@@ -41,15 +42,14 @@ Authorization: Bearer <accessToken>
 
 ### POST `/auth/register`
 
-商家註冊，會同時建立店家資料與商家帳號。註冊成功後直接回傳 JWT。
+商家註冊，會同時建立店家資料與商家帳號。`storeCode` 由後端自動產生，前端不需要傳。若 `storeName` 已存在，新的 `userEmail` 會綁到同一家店；`userEmail` 全系統唯一。註冊成功後直接回傳 JWT。
 
 Request:
 
 ```json
 {
-  "username": "new_merchant",
+  "userEmail": "new.merchant@example.com",
   "password": "password123",
-  "storeCode": "new-shop",
   "storeName": "新店家"
 }
 ```
@@ -62,7 +62,7 @@ Response `201`:
   "tokenType": "bearer",
   "store": {
     "id": 4,
-    "code": "new-shop",
+    "code": "store-a1b2c3d4",
     "name": "新店家"
   }
 }
@@ -72,8 +72,8 @@ Failure:
 
 | Status | Meaning |
 |---:|---|
-| 409 | 商家帳號或店家代號已存在 |
-| 422 | 欄位格式不符合，例如密碼少於 8 碼 |
+| 409 | Email 已存在 |
+| 422 | 欄位格式不符合，例如 email 格式錯誤或密碼少於 8 碼 |
 
 ### POST `/auth/login`
 
@@ -83,7 +83,7 @@ Request:
 
 ```json
 {
-  "username": "tea_owner",
+  "userEmail": "tea.owner@example.com",
   "password": "password123"
 }
 ```
@@ -106,7 +106,8 @@ Failure:
 
 | Status | Meaning |
 |---:|---|
-| 401 | 帳號或密碼錯誤 |
+| 401 | Email 或密碼錯誤 |
+| 422 | Email 格式錯誤 |
 
 ## 四個主要商家 API
 
@@ -332,7 +333,7 @@ DB read:
 ```bash
 TOKEN=$(curl -s -X POST http://127.0.0.1:8000/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"tea_owner","password":"password123"}' \
+  -d '{"userEmail":"tea.owner@example.com","password":"password123"}' \
   | python -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')
 
 QR_VALUE=$(curl -s -X POST http://127.0.0.1:8000/merchant/qr-codes \
@@ -365,7 +366,7 @@ Request:
 
 ```json
 {
-  "username": "new_gov",
+  "userEmail": "new.gov@example.com",
   "password": "password123"
 }
 ```
@@ -378,7 +379,7 @@ Response `201`:
   "tokenType": "bearer",
   "user": {
     "id": 2,
-    "username": "new_gov"
+    "userEmail": "new.gov@example.com"
   }
 }
 ```
@@ -387,8 +388,8 @@ Failure:
 
 | Status | Meaning |
 |---:|---|
-| 409 | 政府帳號已存在 |
-| 422 | 欄位格式不符合，例如密碼少於 8 碼 |
+| 409 | Email 已存在 |
+| 422 | 欄位格式不符合，例如 email 格式錯誤或密碼少於 8 碼 |
 
 ### POST `/government/auth/login`
 
@@ -396,7 +397,7 @@ Request:
 
 ```json
 {
-  "username": "gov_admin",
+  "userEmail": "gov.admin@example.com",
   "password": "password123"
 }
 ```
@@ -409,7 +410,7 @@ Response `200`:
   "tokenType": "bearer",
   "user": {
     "id": 1,
-    "username": "gov_admin"
+    "userEmail": "gov.admin@example.com"
   }
 }
 ```
