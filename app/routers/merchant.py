@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.daily_stats import record_daily_recovered, record_daily_sold
+from app.daily_reports import append_recovered_report_row, append_sold_report_row
 from app.models import Loan, MerchantUser, RefundLedger, ScanEvent
 from app.schemas import (
     ContainerType,
@@ -76,15 +76,14 @@ def create_qr_code(
         if loan.status == "returned":
             loan.status = "partial_returned"
 
-    record_daily_sold(
-        db,
-        store_id=current_user.store_id,
-        container_type=ContainerType.cup.value,
-        count=payload.cup_count,
-        occurred_at=issued_at,
-    )
     db.commit()
     db.refresh(loan)
+    append_sold_report_row(
+        loan=loan,
+        qr_value=qr_value,
+        added_count=payload.cup_count,
+        occurred_at=issued_at,
+    )
 
     return QRCodeResponse(
         loanId=loan.id,
@@ -181,19 +180,24 @@ def scan_return(
             created_at=scanned_at,
         )
     )
-    record_daily_recovered(
-        db,
-        store_id=current_user.store_id,
-        container_type=loan.container_type,
+    db.commit()
+    db.refresh(loan)
+    append_recovered_report_row(
+        loan=loan,
+        qr_value=payload.qr_value,
+        recovered_store_id=current_user.store_id,
+        recovered_store_code=current_user.store.code,
+        recovered_store_name=current_user.store.name,
         count=return_count,
-        is_normal=not is_expired and not is_abnormal,
+        condition=payload.condition.value,
+        result=scan_result,
+        reason=None if refund_reason == "normal" else refund_reason,
         is_expired=is_expired,
         is_abnormal=is_abnormal,
         is_cross_store=loan.issued_store_id != current_user.store_id,
+        note=payload.note,
         occurred_at=scanned_at,
     )
-    db.commit()
-    db.refresh(loan)
 
     return ReturnScanResponse(
         accepted=True,
