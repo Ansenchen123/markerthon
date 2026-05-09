@@ -184,7 +184,7 @@ MVP 目前不處理真實金流，只依分類標籤在系統內保存押金規�
 - **店家報表**：各店借出量、回收量、跨店回收量、異常件數。
 - **政府報表**：整體使用率、回收率、減少一次性容器估算、補助成效。
 
-MVP 目前採每日 CSV append log 控制資料量，每天產生一個 `daily_report_YYYY-MM-DD.csv`，同一天的借出與回收都以 log row 追加寫入。商家統計 API 需帶入 `storeId`，後端會確認該店與登入商家 JWT 相符，再讀取 CSV 依日期聚合，固定回傳區間內每天一筆並同時包含杯子與餐盒數量。
+MVP 目前採每日 CSV append log 控制資料量，每天產生一個 `daily_report_YYYY-MM-DD.csv`，同一天的借出與回收都以 log row 追加寫入。商家統計 API 需帶入 `storeId`，後端會確認該店與登入商家 JWT 相符，再讀取 CSV 依日期聚合，固定回傳區間內每天一筆並同時包含杯子與餐盒數量。資料庫中 `item_count` 保留該 QR/發票批次的累計借出總量，`returned_count` 記錄已回收量，`remaining_count` 記錄尚未回收量；每次成功掃描會讓 `returned_count` 增加 1，並讓 `remaining_count` 減少 1。
 
 政府端 web 第一版不再保留舊的 daily/invoice/anomaly 查詢 API，而是透過獨立 `/government/web/...` API 取得本月使用情況、企業加入數量、企業地區分布、環保杯使用排名與特定店家狀況。政府端也可透過 SQLite views 讀取整體總覽、店家統計與異常事件，但每日報表不再使用 DB table。
 

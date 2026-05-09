@@ -120,6 +120,17 @@ def ensure_sqlite_compatibility() -> None:
                     """
                 )
             )
+        if "remaining_count" not in columns:
+            conn.execute(text("ALTER TABLE loans ADD COLUMN remaining_count INTEGER"))
+            conn.execute(
+                text(
+                    """
+                    UPDATE loans
+                    SET remaining_count = MAX(item_count - returned_count, 0)
+                    WHERE remaining_count IS NULL
+                    """
+                )
+            )
         conn.execute(text("DROP INDEX IF EXISTS ix_loans_invoice_store_sequence"))
         conn.execute(
             text(

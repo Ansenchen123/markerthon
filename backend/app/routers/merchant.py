@@ -31,6 +31,12 @@ DEPOSIT_AMOUNTS = {
 }
 
 
+def _remaining(loan: Loan) -> int:
+    if loan.remaining_count is None:
+        return max(loan.item_count - loan.returned_count, 0)
+    return max(loan.remaining_count, 0)
+
+
 def _refund_reason(is_expired: bool, condition: ReturnCondition) -> str:
     reasons: list[str] = []
     if is_expired:
@@ -179,6 +185,7 @@ def create_qr_code(
             invoice_sequence=1,
             item_count=payload.count,
             returned_count=0,
+            remaining_count=payload.count,
             container_type=payload.category.value,
             deposit_amount=DEPOSIT_AMOUNTS[payload.category],
             status="active",
@@ -187,8 +194,10 @@ def create_qr_code(
         )
         db.add(loan)
     else:
+        current_remaining = _remaining(loan)
         loan.qr_token_hash = hash_qr_value(qr_value)
         loan.item_count += payload.count
+        loan.remaining_count = current_remaining + payload.count
         if loan.status == "returned":
             loan.status = "partial_returned"
 
@@ -210,7 +219,7 @@ def create_qr_code(
         addedCount=payload.count,
         totalCount=loan.item_count,
         returnedCount=loan.returned_count,
-        remainingCount=loan.item_count - loan.returned_count,
+        remainingCount=_remaining(loan),
         issuedAt=loan.issued_at,
         dueAt=loan.due_at,
     )
@@ -248,7 +257,7 @@ def scan_return(
         db.commit()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="QR value is not recognized")
 
-    remaining_count = loan.item_count - loan.returned_count
+    remaining_count = _remaining(loan)
     if remaining_count <= 0 or loan.status == "returned":
         db.add(
             ScanEvent(
@@ -273,7 +282,8 @@ def scan_return(
     scan_result = "returned" if refund_amount == loan.deposit_amount * return_count else "returned_no_refund"
 
     loan.returned_count += return_count
-    loan.status = "returned" if loan.returned_count == loan.item_count else "partial_returned"
+    loan.remaining_count = max(remaining_count - return_count, 0)
+    loan.status = "returned" if loan.remaining_count == 0 else "partial_returned"
     loan.returned_at = scanned_at
     loan.returned_store_id = current_user.store_id
     loan.return_condition = condition.value
@@ -336,7 +346,7 @@ def scan_return(
         count=return_count,
         totalCount=loan.item_count,
         returnedCount=loan.returned_count,
-        remainingCount=loan.item_count - loan.returned_count,
+        remainingCount=_remaining(loan),
         refundReason=refund_reason,
         isExpired=is_expired,
         isAbnormal=is_abnormal,

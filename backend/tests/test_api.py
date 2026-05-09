@@ -349,6 +349,9 @@ def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
         loan = db.get(Loan, qr["loanId"])
         assert loan.status == "returned"
         assert loan.returned_store_id != loan.issued_store_id
+        assert loan.item_count == 1
+        assert loan.returned_count == 1
+        assert loan.remaining_count == 0
         ledger = db.scalar(select(RefundLedger).where(RefundLedger.loan_id == loan.id))
         assert ledger.refund_amount == 20
 
@@ -404,6 +407,12 @@ def test_invoice_qr_returns_one_container_per_scan(context):
     assert first_return.json()["returnedCount"] == 1
     assert first_return.json()["remainingCount"] == 2
 
+    with SessionLocal() as db:
+        loan = db.get(Loan, qr["loanId"])
+        assert loan.item_count == 3
+        assert loan.returned_count == 1
+        assert loan.remaining_count == 2
+
     second_return = client.post(
         "/merchant/returns/scan",
         headers=bento_headers,
@@ -413,6 +422,12 @@ def test_invoice_qr_returns_one_container_per_scan(context):
     assert second_return.json()["status"] == "partial_returned"
     assert second_return.json()["returnedCount"] == 2
     assert second_return.json()["remainingCount"] == 1
+
+    with SessionLocal() as db:
+        loan = db.get(Loan, qr["loanId"])
+        assert loan.item_count == 3
+        assert loan.returned_count == 2
+        assert loan.remaining_count == 1
 
     final_return = client.post(
         "/merchant/returns/scan",
@@ -428,6 +443,7 @@ def test_invoice_qr_returns_one_container_per_scan(context):
         loan = db.get(Loan, qr["loanId"])
         assert loan.item_count == 3
         assert loan.returned_count == 3
+        assert loan.remaining_count == 0
         assert loan.status == "returned"
         ledger = db.scalar(select(RefundLedger).where(RefundLedger.loan_id == loan.id))
         assert ledger.refund_amount == 60

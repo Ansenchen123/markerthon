@@ -199,7 +199,7 @@ DB changes:
 
 | Table | Change |
 |---|---|
-| `loans` | 同店同發票同分類標籤不存在時新增一筆；已存在時更新同一筆 `item_count += count`，保存分類欄位與 `qr_token_hash`，不保存明文 `qrValue` |
+| `loans` | 同店同發票同分類標籤不存在時新增一筆；已存在時更新同一筆 `item_count += count` 與 `remaining_count += count`，保存分類欄位與 `qr_token_hash`，不保存明文 `qrValue` |
 
 ### 2. POST `/merchant/returns/scan`
 
@@ -279,7 +279,7 @@ DB changes on accepted return:
 
 | Table | Change |
 |---|---|
-| `loans` | `returned_count += 1`；未全數回收為 `partial_returned`，全數回收為 `returned` |
+| `loans` | `returned_count += 1` 且 `remaining_count -= 1`；未全數回收為 `partial_returned`，全數回收為 `returned` |
 | `refund_ledgers` | 內部累加退押帳本；不回傳金額給商家 API |
 | `scan_events` | 新增掃碼事件，供異常統計與稽核 |
 
@@ -781,7 +781,7 @@ daily_report_YYYY-MM-DD.csv
 
 - 時間以 `Asia/Taipei` 計算 3 天歸還期限，SQLite 內存 naive datetime。
 - `qrValue` 使用 `發票代號|商家代號|分類標籤`；同一店家同一張發票同一分類標籤只有一個 QR。
-- DB 保存 `item_count`、`returned_count` 與 SHA-256 `qr_token_hash`，不保存明文 `qrValue`。
+- DB 保存 `item_count`、`returned_count`、`remaining_count` 與 SHA-256 `qr_token_hash`，不保存明文 `qrValue`。`item_count` 是累計借出總量，歸還時不會下降；`remaining_count` 是實際未歸還量，掃描成功一次會扣 1。
 - 每日統計不再用 DB table；後端以每日 CSV append log 控制資料量，商家統計 API 會讀 CSV 聚合。政府端 web API 讀目前資料庫彙總本月使用情況與店家狀態。商家統計 API 不提供分類 filter，會在每日 row 中回傳 `categoryCounts`。
 - 第一版不串真實金流，只保存 `refund_ledgers` 作為後端退押帳本。
 - 第一版不追蹤單一實體容器 ID。

@@ -37,11 +37,13 @@ def _rate(returned_count: int, issued_count: int) -> float:
 
 
 def _remaining(loan: Loan) -> int:
-    return max(loan.item_count - loan.returned_count, 0)
+    if loan.remaining_count is None:
+        return max(loan.item_count - loan.returned_count, 0)
+    return max(loan.remaining_count, 0)
 
 
 def _is_expired(loan: Loan) -> bool:
-    return loan.returned_count < loan.item_count and now_taipei() > loan.due_at
+    return _remaining(loan) > 0 and now_taipei() > loan.due_at
 
 
 def _is_abnormal(loan: Loan) -> bool:
@@ -239,7 +241,7 @@ def get_government_web_top_cup_stores(
                 region=store.region,
                 issuedCount=issued_count,
                 returnedCount=returned_count,
-                remainingCount=issued_count - returned_count,
+                remainingCount=sum(_remaining(loan) for loan in cup_loans),
                 recoveryRate=_rate(returned_count, issued_count),
             )
             for index, (store, issued_count, returned_count) in enumerate(ranking_values[:limit])

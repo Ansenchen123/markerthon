@@ -73,6 +73,7 @@ class Loan(Base):
     invoice_sequence = Column(Integer, nullable=False, default=1)
     item_count = Column(Integer, nullable=False, default=1)
     returned_count = Column(Integer, nullable=False, default=0)
+    remaining_count = Column(Integer, nullable=False, default=1)
     container_type = Column(String(20), nullable=False, index=True)
     deposit_amount = Column(Integer, nullable=False)
     status = Column(String(20), nullable=False, default="active", index=True)

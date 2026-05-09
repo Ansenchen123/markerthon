@@ -83,6 +83,7 @@ curl -s http://127.0.0.1:8013/health
 - DB：
   - `loans.item_count`
   - `loans.returned_count`
+  - `loans.remaining_count`
   - `loans.status`
   - `refund_ledgers`
   - `scan_events`
@@ -103,7 +104,8 @@ curl -s http://127.0.0.1:8013/health
 
 - DB 借出總數 `sum(item_count)` 等於 CSV sold `sum(count)`。
 - DB 回收總數 `sum(returned_count)` 等於 CSV recovered `sum(count)`。
-- `remainingCount = totalCount - returnedCount`。
+- DB 未歸還總數 `sum(remaining_count)` 等於 `sum(item_count - returned_count)`。
+- `remainingCount = totalCount - returnedCount`，且成功掃描一次時 DB `remaining_count` 要少 1。
 - 同一商家、同一發票、同一 `category` 會共用同一 QR 並追加數量。
 - 同一商家、同一發票、不同 `category` 會分成不同 QR。
 - 掃描一次只回收一個容器。

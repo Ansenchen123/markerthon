@@ -70,6 +70,12 @@ def _row_count(row: dict[str, str]) -> int:
     return int(row.get("count") or 0)
 
 
+def _remaining(loan: Loan) -> int:
+    if loan.remaining_count is None:
+        return max(loan.item_count - loan.returned_count, 0)
+    return max(loan.remaining_count, 0)
+
+
 def _append_report_row(occurred_at: datetime, row: dict[str, object]) -> None:
     path = daily_report_path(occurred_at.date())
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -113,7 +119,7 @@ def append_sold_report_row(*, loan: Loan, qr_value: str, added_count: int, occur
             "count": added_count,
             "totalCount": loan.item_count,
             "returnedCount": loan.returned_count,
-            "remainingCount": loan.item_count - loan.returned_count,
+            "remainingCount": _remaining(loan),
         },
     )
 
@@ -156,7 +162,7 @@ def append_recovered_report_row(
             "count": count,
             "totalCount": loan.item_count,
             "returnedCount": loan.returned_count,
-            "remainingCount": loan.item_count - loan.returned_count,
+            "remainingCount": _remaining(loan),
             "condition": condition,
             "result": result,
             "reason": reason,
