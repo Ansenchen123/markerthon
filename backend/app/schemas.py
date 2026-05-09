@@ -58,6 +58,7 @@ class MerchantRegisterRequest(APIModel):
     user_email: str = Field(alias="userEmail", min_length=3, max_length=255)
     password: str = Field(min_length=8, max_length=128)
     store_name: str = Field(alias="storeName", min_length=1, max_length=120)
+    region: str = Field(default="未設定", min_length=1, max_length=80)
 
     @model_validator(mode="before")
     @classmethod
@@ -68,6 +69,11 @@ class MerchantRegisterRequest(APIModel):
     @classmethod
     def validate_user_email(cls, value: str) -> str:
         return LoginRequest.validate_user_email(value)
+
+    @field_validator("region")
+    @classmethod
+    def normalize_region(cls, value: str) -> str:
+        return value.strip() or "未設定"
 
 
 class GovernmentRegisterRequest(APIModel):
@@ -89,6 +95,7 @@ class StoreResponse(APIModel):
     id: int
     code: str
     name: str
+    region: str
 
 
 class LoginResponse(APIModel):
@@ -212,6 +219,94 @@ class GovernmentStoreStatsResponse(APIModel):
     cross_store_count: int = Field(alias="crossStoreCount")
     abnormal_count: int = Field(alias="abnormalCount")
     recovery_rate: float = Field(alias="recoveryRate")
+    last_activity_at: Optional[datetime] = Field(default=None, alias="lastActivityAt")
+
+
+class GovernmentWebDailyUsageRow(APIModel):
+    stat_date: date = Field(alias="statDate")
+    issued_count: int = Field(alias="issuedCount")
+    returned_count: int = Field(alias="returnedCount")
+
+
+class GovernmentWebMonthlyUsageResponse(APIModel):
+    month: str
+    from_at: datetime = Field(alias="from")
+    to_at: datetime = Field(alias="to")
+    issued_count: int = Field(alias="issuedCount")
+    returned_count: int = Field(alias="returnedCount")
+    remaining_count: int = Field(alias="remainingCount")
+    recovery_rate: float = Field(alias="recoveryRate")
+    active_invoice_count: int = Field(alias="activeInvoiceCount")
+    partial_returned_invoice_count: int = Field(alias="partialReturnedInvoiceCount")
+    returned_invoice_count: int = Field(alias="returnedInvoiceCount")
+    overdue_count: int = Field(alias="overdueCount")
+    abnormal_count: int = Field(alias="abnormalCount")
+    daily: list[GovernmentWebDailyUsageRow]
+
+
+class GovernmentWebEnterpriseCountsResponse(APIModel):
+    month: str
+    from_at: datetime = Field(alias="from")
+    to_at: datetime = Field(alias="to")
+    month_joined_count: int = Field(alias="monthJoinedCount")
+    total_enterprise_count: int = Field(alias="totalEnterpriseCount")
+
+
+class GovernmentWebRegionDistributionRow(APIModel):
+    region: str
+    enterprise_count: int = Field(alias="enterpriseCount")
+
+
+class GovernmentWebRegionDistributionResponse(APIModel):
+    total_enterprise_count: int = Field(alias="totalEnterpriseCount")
+    regions: list[GovernmentWebRegionDistributionRow]
+
+
+class GovernmentWebCupUsageRankingRow(APIModel):
+    rank: int
+    store_id: int = Field(alias="storeId")
+    store_code: str = Field(alias="storeCode")
+    store_name: str = Field(alias="storeName")
+    region: str
+    issued_count: int = Field(alias="issuedCount")
+    returned_count: int = Field(alias="returnedCount")
+    remaining_count: int = Field(alias="remainingCount")
+    recovery_rate: float = Field(alias="recoveryRate")
+
+
+class GovernmentWebCupUsageRankingResponse(APIModel):
+    month: str
+    from_at: datetime = Field(alias="from")
+    to_at: datetime = Field(alias="to")
+    category: CategoryLabel
+    rankings: list[GovernmentWebCupUsageRankingRow]
+
+
+class GovernmentWebStoreProfile(APIModel):
+    id: int
+    code: str
+    name: str
+    region: str
+    created_at: datetime = Field(alias="createdAt")
+
+
+class GovernmentWebStoreStatusResponse(APIModel):
+    month: str
+    from_at: datetime = Field(alias="from")
+    to_at: datetime = Field(alias="to")
+    store: GovernmentWebStoreProfile
+    issued_count: int = Field(alias="issuedCount")
+    returned_count: int = Field(alias="returnedCount")
+    recovered_count: int = Field(alias="recoveredCount")
+    remaining_count: int = Field(alias="remainingCount")
+    recovery_rate: float = Field(alias="recoveryRate")
+    cup_issued_count: int = Field(alias="cupIssuedCount")
+    cup_returned_count: int = Field(alias="cupReturnedCount")
+    meal_box_issued_count: int = Field(alias="mealBoxIssuedCount")
+    meal_box_returned_count: int = Field(alias="mealBoxReturnedCount")
+    overdue_count: int = Field(alias="overdueCount")
+    abnormal_count: int = Field(alias="abnormalCount")
+    cross_store_recovered_count: int = Field(alias="crossStoreRecoveredCount")
     last_activity_at: Optional[datetime] = Field(default=None, alias="lastActivityAt")
 
 

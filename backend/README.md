@@ -29,13 +29,13 @@ Default daily CSV report path: `data/daily_reports/daily_report_YYYY-MM-DD.csv`.
 
 ## Demo Accounts
 
-| Store | User Email | Password |
-|---|---|---|
-| 青山茶飲 | `tea.owner@example.com` | `password123` |
-| 青山茶飲 | `tea.staff@example.com` | `password123` |
-| 晨光便當 | `bento.owner@example.com` | `password123` |
-| 巷口咖啡 | `cafe.owner@example.com` | `password123` |
-| 政府端管理 | `gov.admin@example.com` | `password123` |
+| Store | Region | User Email | Password |
+|---|---|---|---|
+| 青山茶飲 | 台北市大安區 | `tea.owner@example.com` | `password123` |
+| 青山茶飲 | 台北市大安區 | `tea.staff@example.com` | `password123` |
+| 晨光便當 | 台北市中山區 | `bento.owner@example.com` | `password123` |
+| 巷口咖啡 | 新北市板橋區 | `cafe.owner@example.com` | `password123` |
+| 政府端管理 | - | `gov.admin@example.com` | `password123` |
 
 ## Main Merchant APIs
 
@@ -47,6 +47,11 @@ Default daily CSV report path: `data/daily_reports/daily_report_YYYY-MM-DD.csv`.
 - `GET /merchant/stats/recovered`
 - `POST /government/auth/register`
 - `POST /government/auth/login`
+- `GET /government/web/monthly-usage`
+- `GET /government/web/enterprise-counts`
+- `GET /government/web/region-distribution`
+- `GET /government/web/top-cup-stores`
+- `GET /government/web/stores/{storeId}`
 - `GET /government/overview`
 - `GET /government/stores`
 - `GET /government/daily/sold`

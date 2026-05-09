@@ -28,7 +28,7 @@ def _login_response(user: MerchantUser) -> LoginResponse:
     return LoginResponse(
         accessToken=_merchant_token(user),
         tokenType="bearer",
-        store=StoreResponse(id=user.store.id, code=user.store.code, name=user.store.name),
+        store=StoreResponse(id=user.store.id, code=user.store.code, name=user.store.name, region=user.store.region),
     )
 
 
@@ -49,9 +49,11 @@ def register(payload: MerchantRegisterRequest, db: Session = Depends(get_db)) ->
 
     store = db.scalar(select(Store).where(Store.name == payload.store_name))
     if store is None:
-        store = Store(code=_generate_store_code(db), name=payload.store_name)
+        store = Store(code=_generate_store_code(db), name=payload.store_name, region=payload.region)
         db.add(store)
         db.flush()
+    elif store.region == "未設定" and payload.region != "未設定":
+        store.region = payload.region
 
     user = MerchantUser(
         store_id=store.id,

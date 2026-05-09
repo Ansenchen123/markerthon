@@ -9,10 +9,10 @@ from app.security import hash_password
 
 
 DEMO_STORES = [
-    ("tea-shop", "青山茶飲", "tea.owner@example.com"),
-    ("bento-shop", "晨光便當", "bento.owner@example.com"),
-    ("cafe-shop", "巷口咖啡", "cafe.owner@example.com"),
-    ("tea-shop", "青山茶飲", "tea.staff@example.com"),
+    ("tea-shop", "青山茶飲", "台北市大安區", "tea.owner@example.com"),
+    ("bento-shop", "晨光便當", "台北市中山區", "bento.owner@example.com"),
+    ("cafe-shop", "巷口咖啡", "新北市板橋區", "cafe.owner@example.com"),
+    ("tea-shop", "青山茶飲", "台北市大安區", "tea.staff@example.com"),
 ]
 DEMO_PASSWORD = "password123"
 DEMO_GOVERNMENT_USERS = [
@@ -40,12 +40,14 @@ def seed_demo_data(db: Session) -> None:
             government_user.user_email = user_email
     db.flush()
 
-    for code, name, user_email in DEMO_STORES:
+    for code, name, region, user_email in DEMO_STORES:
         store = db.scalar(select(Store).where(Store.code == code))
         if store is None:
-            store = Store(code=code, name=name)
+            store = Store(code=code, name=name, region=region)
             db.add(store)
             db.flush()
+        else:
+            store.region = region
 
         user = db.scalar(select(MerchantUser).where(MerchantUser.user_email == user_email))
         if user is None:

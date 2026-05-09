@@ -104,6 +104,11 @@ def daily_stats_range() -> dict[str, str]:
     return {"from": today, "to": today}
 
 
+def month_params() -> dict[str, str]:
+    now = now_taipei()
+    return {"year": str(now.year), "month": str(now.month)}
+
+
 def count_for_category(row: dict, category: str) -> int:
     return next(item["count"] for item in row["categoryCounts"] if item["category"] == category)
 
@@ -115,6 +120,7 @@ def test_login_success_and_failure(context):
     assert success.status_code == 200
     assert success.json()["accessToken"]
     assert success.json()["store"]["code"] == "tea-shop"
+    assert success.json()["store"]["region"] == "台北市大安區"
 
     failure = client.post("/auth/login", json={"userEmail": "tea.owner@example.com", "password": "bad"})
     assert failure.status_code == 401
@@ -131,10 +137,12 @@ def test_register_and_login_accept_email_field_aliases(context):
         json={"userEmail": "123@gmail.com", "password": "12345678", "storeName": "登入測試店"},
     )
     assert register.status_code == 201
+    assert register.json()["store"]["region"] == "未設定"
 
     login_lowercase_alias = client.post("/auth/login", json={"useremail": "123@gmail.com", "password": "12345678"})
     assert login_lowercase_alias.status_code == 200
     assert login_lowercase_alias.json()["store"]["name"] == "登入測試店"
+    assert login_lowercase_alias.json()["store"]["region"] == "未設定"
 
     login_old_alias = client.post("/auth/login", json={"username": "123@gmail.com", "password": "12345678"})
     assert login_old_alias.status_code == 200
@@ -156,12 +164,14 @@ def test_merchant_register_creates_store_user_and_token(context):
             "userEmail": "new.merchant@example.com",
             "password": "password123",
             "storeName": "新店家",
+            "region": "台北市信義區",
         },
     )
     assert response.status_code == 201
     assert response.json()["accessToken"]
     assert response.json()["store"]["code"].startswith("store-")
     assert response.json()["store"]["name"] == "新店家"
+    assert response.json()["store"]["region"] == "台北市信義區"
     headers = {"Authorization": f"Bearer {response.json()['accessToken']}"}
 
     qr = client.post(
@@ -192,6 +202,7 @@ def test_merchant_register_creates_store_user_and_token(context):
     )
     assert same_store_second_user.status_code == 201
     assert same_store_second_user.json()["store"]["code"] == response.json()["store"]["code"]
+    assert same_store_second_user.json()["store"]["region"] == "台北市信義區"
 
 
 def test_government_login_and_role_isolation(context):
@@ -639,3 +650,71 @@ def test_government_read_only_apis_cover_overview_stores_invoices_and_anomalies(
     anomalies = client.get("/government/anomalies", headers=gov_headers, params=params)
     assert anomalies.status_code == 200
     assert any(item["result"] == "invalid_qr" for item in anomalies.json()["anomalies"])
+
+
+def test_government_web_apis_cover_monthly_dashboard_and_store_status(context):
+    client, SessionLocal = context
+    tea_headers = login_headers(client, "tea.owner@example.com")
+    bento_headers = login_headers(client, "bento.owner@example.com")
+    gov_headers = government_headers(client)
+
+    tea_cup = create_qr_batch(client, tea_headers, "WEB-TEA-CUP", item_count=4)
+    tea_meal_box = create_qr_batch(
+        client,
+        tea_headers,
+        "WEB-TEA-MEAL",
+        item_count=2,
+        category="meal_box",
+    )
+    bento_cup = create_qr_batch(client, bento_headers, "WEB-BENTO-CUP", item_count=1)
+    client.post("/merchant/returns/scan", headers=tea_headers, json={"qrValue": tea_cup["qrValue"]})
+    client.post("/merchant/returns/scan", headers=tea_headers, json={"qrValue": tea_meal_box["qrValue"]})
+    client.post("/merchant/returns/scan", headers=bento_headers, json={"qrValue": bento_cup["qrValue"]})
+
+    with SessionLocal() as db:
+        tea_store_id = db.scalar(select(Store.id).where(Store.code == "tea-shop"))
+
+    params = month_params()
+    usage = client.get("/government/web/monthly-usage", headers=gov_headers, params=params)
+    assert usage.status_code == 200
+    assert usage.json()["issuedCount"] == 7
+    assert usage.json()["returnedCount"] == 3
+    assert usage.json()["remainingCount"] == 4
+    assert usage.json()["recoveryRate"] == 0.4286
+    assert any(row["issuedCount"] == 7 for row in usage.json()["daily"])
+
+    enterprise_counts = client.get("/government/web/enterprise-counts", headers=gov_headers, params=params)
+    assert enterprise_counts.status_code == 200
+    assert enterprise_counts.json()["monthJoinedCount"] == 3
+    assert enterprise_counts.json()["totalEnterpriseCount"] == 3
+
+    regions = client.get("/government/web/region-distribution", headers=gov_headers)
+    assert regions.status_code == 200
+    assert regions.json()["totalEnterpriseCount"] == 3
+    region_counts = {row["region"]: row["enterpriseCount"] for row in regions.json()["regions"]}
+    assert region_counts["台北市大安區"] == 1
+    assert region_counts["台北市中山區"] == 1
+    assert region_counts["新北市板橋區"] == 1
+
+    ranking = client.get("/government/web/top-cup-stores", headers=gov_headers, params={**params, "limit": "2"})
+    assert ranking.status_code == 200
+    assert ranking.json()["category"] == "cup"
+    assert ranking.json()["rankings"][0]["storeCode"] == "tea-shop"
+    assert ranking.json()["rankings"][0]["issuedCount"] == 4
+    assert ranking.json()["rankings"][0]["region"] == "台北市大安區"
+
+    store_status = client.get(f"/government/web/stores/{tea_store_id}", headers=gov_headers, params=params)
+    assert store_status.status_code == 200
+    assert store_status.json()["store"]["code"] == "tea-shop"
+    assert store_status.json()["store"]["region"] == "台北市大安區"
+    assert store_status.json()["issuedCount"] == 6
+    assert store_status.json()["returnedCount"] == 2
+    assert store_status.json()["recoveredCount"] == 2
+    assert store_status.json()["remainingCount"] == 4
+    assert store_status.json()["cupIssuedCount"] == 4
+    assert store_status.json()["cupReturnedCount"] == 1
+    assert store_status.json()["mealBoxIssuedCount"] == 2
+    assert store_status.json()["mealBoxReturnedCount"] == 1
+
+    missing_store = client.get("/government/web/stores/9999", headers=gov_headers, params=params)
+    assert missing_store.status_code == 404

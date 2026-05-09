@@ -20,6 +20,7 @@ class Store(Base):
     id = Column(Integer, primary_key=True)
     code = Column(String(40), nullable=False, unique=True, index=True)
     name = Column(String(120), nullable=False)
+    region = Column(String(80), nullable=False, default="未設定", index=True)
     created_at = Column(DateTime, nullable=False, default=now_taipei)
 
     users = relationship("MerchantUser", back_populates="store")

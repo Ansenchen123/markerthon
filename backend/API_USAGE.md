@@ -25,13 +25,13 @@ uvicorn app.main:app --reload
 
 Demo accounts:
 
-| Store | User Email | Password |
-|---|---|---|
-| 青山茶飲 | `tea.owner@example.com` | `password123` |
-| 青山茶飲 | `tea.staff@example.com` | `password123` |
-| 晨光便當 | `bento.owner@example.com` | `password123` |
-| 巷口咖啡 | `cafe.owner@example.com` | `password123` |
-| 政府端管理 | `gov.admin@example.com` | `password123` |
+| Store | Region | User Email | Password |
+|---|---|---|---|
+| 青山茶飲 | 台北市大安區 | `tea.owner@example.com` | `password123` |
+| 青山茶飲 | 台北市大安區 | `tea.staff@example.com` | `password123` |
+| 晨光便當 | 台北市中山區 | `bento.owner@example.com` | `password123` |
+| 巷口咖啡 | 新北市板橋區 | `cafe.owner@example.com` | `password123` |
+| 政府端管理 | - | `gov.admin@example.com` | `password123` |
 
 ### 產生五天 Demo CSV
 
@@ -78,9 +78,12 @@ Request:
 {
   "userEmail": "new.merchant@example.com",
   "password": "password123",
-  "storeName": "新店家"
+  "storeName": "新店家",
+  "region": "台北市信義區"
 }
 ```
+
+`region` 是店家所在地區，供政府端企業地區分布圖使用；若未傳，後端會填 `未設定`。
 
 Response `201`:
 
@@ -91,7 +94,8 @@ Response `201`:
   "store": {
     "id": 4,
     "code": "store-a1b2c3d4",
-    "name": "新店家"
+    "name": "新店家",
+    "region": "台北市信義區"
   }
 }
 ```
@@ -126,7 +130,8 @@ Response `200`:
   "store": {
     "id": 1,
     "code": "tea-shop",
-    "name": "青山茶飲"
+    "name": "青山茶飲",
+    "region": "台北市大安區"
   }
 }
 ```
@@ -474,7 +479,7 @@ curl -s "http://127.0.0.1:8000/merchant/stats/recovered?storeId=1&from=2026-05-0
   -H "Authorization: Bearer $TOKEN"
 ```
 
-## 政府端 API
+## 政府端 Web API
 
 政府端 API 全部使用 `/government/...`，不和商家端 `/merchant/...` 混用。政府 token 不能呼叫商家 API，商家 token 也不能呼叫政府 API。
 
@@ -540,6 +545,167 @@ Response `200`:
 ```http
 Authorization: Bearer <governmentAccessToken>
 ```
+
+目前政府 web 應串接以下五個新版查詢接口；若 `year`、`month` 省略，後端會使用目前台北時間的年月。
+
+### GET `/government/web/monthly-usage`
+
+本月使用情況。
+
+Query params:
+
+| Name | Required | Example |
+|---|---|---|
+| `year` | no | `2026` |
+| `month` | no | `5` |
+
+Response `200`:
+
+```json
+{
+  "month": "2026-05",
+  "from": "2026-05-01T00:00:00",
+  "to": "2026-05-31T23:59:59.999999",
+  "issuedCount": 7,
+  "returnedCount": 3,
+  "remainingCount": 4,
+  "recoveryRate": 0.4286,
+  "activeInvoiceCount": 0,
+  "partialReturnedInvoiceCount": 2,
+  "returnedInvoiceCount": 1,
+  "overdueCount": 0,
+  "abnormalCount": 0,
+  "daily": [
+    {
+      "statDate": "2026-05-09",
+      "issuedCount": 7,
+      "returnedCount": 3
+    }
+  ]
+}
+```
+
+### GET `/government/web/enterprise-counts`
+
+本月企業加入數量與目前企業總數。
+
+Query params: optional `year`, `month`
+
+Response `200`:
+
+```json
+{
+  "month": "2026-05",
+  "from": "2026-05-01T00:00:00",
+  "to": "2026-05-31T23:59:59.999999",
+  "monthJoinedCount": 3,
+  "totalEnterpriseCount": 3
+}
+```
+
+### GET `/government/web/region-distribution`
+
+企業所在地區數量分布圖資料。
+
+Response `200`:
+
+```json
+{
+  "totalEnterpriseCount": 3,
+  "regions": [
+    {
+      "region": "台北市大安區",
+      "enterpriseCount": 1
+    },
+    {
+      "region": "台北市中山區",
+      "enterpriseCount": 1
+    }
+  ]
+}
+```
+
+### GET `/government/web/top-cup-stores`
+
+本月環保杯使用 Top 排名。只統計 `category = cup`。
+
+Query params:
+
+| Name | Required | Example |
+|---|---|---|
+| `year` | no | `2026` |
+| `month` | no | `5` |
+| `limit` | no | `10` |
+
+Response `200`:
+
+```json
+{
+  "month": "2026-05",
+  "from": "2026-05-01T00:00:00",
+  "to": "2026-05-31T23:59:59.999999",
+  "category": "cup",
+  "rankings": [
+    {
+      "rank": 1,
+      "storeId": 1,
+      "storeCode": "tea-shop",
+      "storeName": "青山茶飲",
+      "region": "台北市大安區",
+      "issuedCount": 4,
+      "returnedCount": 1,
+      "remainingCount": 3,
+      "recoveryRate": 0.25
+    }
+  ]
+}
+```
+
+### GET `/government/web/stores/{storeId}`
+
+特定店家狀況查詢。
+
+Query params: optional `year`, `month`
+
+Response `200`:
+
+```json
+{
+  "month": "2026-05",
+  "from": "2026-05-01T00:00:00",
+  "to": "2026-05-31T23:59:59.999999",
+  "store": {
+    "id": 1,
+    "code": "tea-shop",
+    "name": "青山茶飲",
+    "region": "台北市大安區",
+    "createdAt": "2026-05-09T12:00:00"
+  },
+  "issuedCount": 6,
+  "returnedCount": 2,
+  "recoveredCount": 2,
+  "remainingCount": 4,
+  "recoveryRate": 0.3333,
+  "cupIssuedCount": 4,
+  "cupReturnedCount": 1,
+  "mealBoxIssuedCount": 2,
+  "mealBoxReturnedCount": 1,
+  "overdueCount": 0,
+  "abnormalCount": 0,
+  "crossStoreRecoveredCount": 0,
+  "lastActivityAt": "2026-05-09T12:10:00"
+}
+```
+
+Failure:
+
+| Status | Meaning |
+|---:|---|
+| 404 | 店家不存在 |
+
+## 政府端 Legacy/除錯 API
+
+下列 `/government/...` 查詢 API 仍保留給除錯、歷史測試與直接查詢使用；政府 web 第一版請優先串接上方 `/government/web/...` 新接口。
 
 ### GET `/government/overview`
 
@@ -792,7 +958,7 @@ Response `200`:
 
 ## 政府端 SQLite Views
 
-政府端 web 主要走 `/government/...` API。若需要本地除錯或直接查 DB，也可讀 SQLite views。
+政府端 web 主要走 `/government/web/...` API。若需要本地除錯或直接查 DB，也可讀 SQLite views。
 
 ### `v_gov_overview`
 

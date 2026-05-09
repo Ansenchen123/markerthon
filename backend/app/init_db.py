@@ -85,6 +85,13 @@ def ensure_sqlite_compatibility() -> None:
                 )
             conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_government_users_user_email ON government_users (user_email)"))
 
+        if "stores" in table_names:
+            store_columns = {column["name"] for column in inspector.get_columns("stores")}
+            if "region" not in store_columns:
+                conn.execute(text("ALTER TABLE stores ADD COLUMN region VARCHAR(80)"))
+                conn.execute(text("UPDATE stores SET region = '未設定' WHERE region IS NULL OR region = ''"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_stores_region ON stores (region)"))
+
     inspector = inspect(engine)
     if not inspector.has_table("loans"):
         return
