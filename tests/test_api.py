@@ -157,7 +157,7 @@ def test_merchant_register_creates_store_user_and_token(context):
         json={"invoiceCode": "NEW-001", "containerType": "cup", "cupCount": 1},
     )
     assert qr.status_code == 201
-    assert qr.json()["qrValue"] == f"NEW-001|{response.json()['store']['code']}"
+    assert qr.json()["qrValue"] == f"NEW-001|{response.json()['store']['code']}|cup"
 
     duplicate_user = client.post(
         "/auth/register",
@@ -234,10 +234,10 @@ def test_create_qr_code_uses_cup_count_without_exposing_amounts(context):
     assert batch["remainingCupCount"] == 3
     assert "totalDepositAmount" not in batch
     assert "depositAmount" not in batch
-    assert batch["qrValue"] == "CUP-001|tea-shop"
+    assert batch["qrValue"] == "CUP-001|tea-shop|cup"
 
 
-def test_create_qr_code_records_container_type_and_rejects_type_mismatch(context):
+def test_create_qr_code_records_container_type_and_separates_types(context):
     client, _ = context
     headers = login_headers(client)
 
@@ -249,6 +249,7 @@ def test_create_qr_code_records_container_type_and_rejects_type_mismatch(context
         container_type="meal_box",
     )
     assert meal_box_batch["containerType"] == "meal_box"
+    assert meal_box_batch["qrValue"] == "MEAL-BOX-001|tea-shop|meal_box"
 
     append_same_type = create_qr_batch(
         client,
@@ -260,12 +261,17 @@ def test_create_qr_code_records_container_type_and_rejects_type_mismatch(context
     assert append_same_type["totalCupCount"] == 3
     assert append_same_type["containerType"] == "meal_box"
 
-    mismatch = client.post(
-        "/merchant/qr-codes",
-        headers=headers,
-        json={"invoiceCode": "MEAL-BOX-001", "containerType": "cup", "cupCount": 1},
+    cup_batch = create_qr_batch(
+        client,
+        headers,
+        invoice="MEAL-BOX-001",
+        cup_count=1,
+        container_type="cup",
     )
-    assert mismatch.status_code == 409
+    assert cup_batch["containerType"] == "cup"
+    assert cup_batch["loanId"] != meal_box_batch["loanId"]
+    assert cup_batch["totalCupCount"] == 1
+    assert cup_batch["qrValue"] == "MEAL-BOX-001|tea-shop|cup"
 
 
 def test_invoice_qr_is_reused_and_count_accumulates_per_store(context):
@@ -278,16 +284,16 @@ def test_invoice_qr_is_reused_and_count_accumulates_per_store(context):
     other_invoice = create_qr_batch(client, tea_headers, invoice="OTHER-INVOICE", cup_count=1)
     other_store = create_qr_batch(client, bento_headers, invoice="SAME-INVOICE", cup_count=1)
 
-    assert first_batch["qrValue"] == "SAME-INVOICE|tea-shop"
+    assert first_batch["qrValue"] == "SAME-INVOICE|tea-shop|cup"
     assert first_batch["addedCupCount"] == 3
     assert first_batch["totalCupCount"] == 3
-    assert second_batch["qrValue"] == "SAME-INVOICE|tea-shop"
+    assert second_batch["qrValue"] == "SAME-INVOICE|tea-shop|cup"
     assert second_batch["addedCupCount"] == 2
     assert second_batch["totalCupCount"] == 5
     assert other_invoice["totalCupCount"] == 1
-    assert other_invoice["qrValue"] == "OTHER-INVOICE|tea-shop"
+    assert other_invoice["qrValue"] == "OTHER-INVOICE|tea-shop|cup"
     assert other_store["totalCupCount"] == 1
-    assert other_store["qrValue"] == "SAME-INVOICE|bento-shop"
+    assert other_store["qrValue"] == "SAME-INVOICE|bento-shop|cup"
 
     today = now_taipei().date()
     rows = read_report_rows(today, today)
@@ -553,7 +559,7 @@ def test_government_read_only_apis_cover_overview_stores_invoices_and_anomalies(
     invoices = client.get("/government/invoices", headers=gov_headers, params=params)
     assert invoices.status_code == 200
     invoice = next(item for item in invoices.json()["invoices"] if item["invoiceCode"] == "GOV-001")
-    assert invoice["qrValue"] == "GOV-001|tea-shop"
+    assert invoice["qrValue"] == "GOV-001|tea-shop|cup"
     assert invoice["totalCupCount"] == 2
     assert invoice["returnedCount"] == 1
     assert invoice["remainingCupCount"] == 1

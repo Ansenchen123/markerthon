@@ -59,8 +59,9 @@ class Loan(Base):
         UniqueConstraint(
             "issued_store_id",
             "invoice_code",
+            "container_type",
             "invoice_sequence",
-            name="uq_loans_invoice_store_sequence",
+            name="uq_loans_invoice_store_type_sequence",
         ),
     )
 

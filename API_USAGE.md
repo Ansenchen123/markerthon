@@ -142,23 +142,23 @@ Failure:
 
 ### 1. POST `/merchant/qr-codes`
 
-店家賣出循環容器時呼叫。店家輸入發票號碼、容器類型與數量，後端會依「商家 + 發票」找到同一筆發票紀錄並累加 `cupCount`。同一張發票只會有一個 `qrValue`；前端只需要把這個 `qrValue` 生成一張 QR Code 圖。
+店家賣出循環容器時呼叫。店家輸入發票號碼、容器類型與數量，後端會依「商家 + 發票 + 容器類型」找到同一筆發票批次紀錄並累加 `cupCount`。同一張發票在同一容器類型下只會有一個 `qrValue`；前端只需要把這個 `qrValue` 生成一張 QR Code 圖。
 
 QR 代表本次借出憑證，不代表實體容器 ID。容器本身不綁定識別碼。
 
 `qrValue` 格式：
 
 ```text
-<invoiceCode>|<storeCode>
+<invoiceCode>|<storeCode>|<containerType>
 ```
 
 例如同一家店同一張發票有兩杯飲料，只會產生：
 
 ```text
-INV-20260509-001|tea-shop
+INV-20260509-001|tea-shop|cup
 ```
 
-杯數差異由後端 `cupCount` / `returnedCount` / `remainingCupCount` 記錄，不在 QR 裡區分單杯。
+杯數差異由後端 `cupCount` / `returnedCount` / `remainingCupCount` 記錄，不在 QR 裡區分單杯。若同一張發票同時包含杯子與餐盒，因容器類型不同，會分別產生 `...|cup` 與 `...|meal_box` 兩個 QR。
 
 Request:
 
@@ -170,14 +170,14 @@ Request:
 }
 ```
 
-`containerType` 可為 `cup` 或 `meal_box`。同一店同一發票建立後不可改成另一種容器類型。`cupCount` 最小為 `1`，最大為 `100`。押金由後端內部帳本處理，不在商家 API 回傳。
+`containerType` 可為 `cup` 或 `meal_box`。同一店同一發票同一容器類型會累加同一筆紀錄；不同容器類型會建立不同 QR。`cupCount` 最小為 `1`，最大為 `100`。押金由後端內部帳本處理，不在商家 API 回傳。
 
 Response `201`:
 
 ```json
 {
   "loanId": 1,
-  "qrValue": "INV-20260509-001|tea-shop",
+  "qrValue": "INV-20260509-001|tea-shop|cup",
   "invoiceCode": "INV-20260509-001",
   "storeCode": "tea-shop",
   "containerType": "cup",
@@ -194,7 +194,7 @@ DB changes:
 
 | Table | Change |
 |---|---|
-| `loans` | 同店同發票不存在時新增一筆；已存在時若 `containerType` 相同就更新同一筆 `cup_count += cupCount`，保存 `container_type` 與 `qr_token_hash`，不保存明文 `qrValue` |
+| `loans` | 同店同發票同容器類型不存在時新增一筆；已存在時更新同一筆 `cup_count += cupCount`，保存 `container_type` 與 `qr_token_hash`，不保存明文 `qrValue` |
 
 ### 2. POST `/merchant/returns/scan`
 
@@ -204,7 +204,7 @@ Request:
 
 ```json
 {
-  "qrValue": "INV-20260509-001|tea-shop",
+  "qrValue": "INV-20260509-001|tea-shop|cup",
   "condition": "normal",
   "note": "normal return"
 }
@@ -601,7 +601,7 @@ Response `200`:
     {
       "loanId": 1,
       "invoiceCode": "INV-20260509-001",
-      "qrValue": "INV-20260509-001|tea-shop",
+      "qrValue": "INV-20260509-001|tea-shop|cup",
       "storeId": 1,
       "storeCode": "tea-shop",
       "storeName": "青山茶飲",
@@ -628,7 +628,7 @@ Response `200`:
 {
   "loanId": 1,
   "invoiceCode": "INV-20260509-001",
-  "qrValue": "INV-20260509-001|tea-shop",
+  "qrValue": "INV-20260509-001|tea-shop|cup",
   "storeId": 1,
   "storeCode": "tea-shop",
   "storeName": "青山茶飲",
@@ -778,7 +778,7 @@ daily_report_YYYY-MM-DD.csv
 ## Notes
 
 - 時間以 `Asia/Taipei` 計算 3 天歸還期限，SQLite 內存 naive datetime。
-- `qrValue` 使用 `發票代號|商家代號`；同一店家同一張發票只有一個 QR。
+- `qrValue` 使用 `發票代號|商家代號|容器類型`；同一店家同一張發票同一容器類型只有一個 QR。
 - DB 保存 `cup_count`、`returned_count` 與 SHA-256 `qr_token_hash`，不保存明文 `qrValue`。
 - 每日統計不再用 DB table；後端以每日 CSV append log 控制資料量，政府端 daily API 會讀 CSV 聚合。
 - 第一版不串真實金流，只保存 `refund_ledgers` 作為後端退押帳本。

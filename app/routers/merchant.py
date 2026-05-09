@@ -50,11 +50,12 @@ def create_qr_code(
         select(Loan).where(
             Loan.issued_store_id == current_user.store_id,
             Loan.invoice_code == payload.invoice_code,
+            Loan.container_type == payload.container_type.value,
             Loan.invoice_sequence == 1,
         )
     )
 
-    qr_value = generate_qr_value(payload.invoice_code, current_user.store.code)
+    qr_value = generate_qr_value(payload.invoice_code, current_user.store.code, payload.container_type.value)
     if loan is None:
         loan = Loan(
             qr_token_hash=hash_qr_value(qr_value),
@@ -71,11 +72,6 @@ def create_qr_code(
         )
         db.add(loan)
     else:
-        if loan.container_type != payload.container_type.value:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Invoice already exists with a different container type",
-            )
         loan.qr_token_hash = hash_qr_value(qr_value)
         loan.cup_count += payload.cup_count
         if loan.status == "returned":

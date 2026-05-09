@@ -264,7 +264,7 @@ def rebuild_daily_report_csvs(db: Session) -> None:
     for loan in db.scalars(select(Loan).order_by(Loan.issued_at, Loan.id)):
         append_sold_report_row(
             loan=loan,
-            qr_value=generate_qr_value(loan.invoice_code, loan.issued_store.code),
+            qr_value=generate_qr_value(loan.invoice_code, loan.issued_store.code, loan.container_type),
             added_count=loan.cup_count,
             occurred_at=loan.issued_at,
         )
@@ -281,7 +281,11 @@ def rebuild_daily_report_csvs(db: Session) -> None:
         is_abnormal = bool(event.reason and event.reason != "expired")
         append_recovered_report_row(
             loan=event.loan,
-            qr_value=generate_qr_value(event.loan.invoice_code, event.loan.issued_store.code),
+            qr_value=generate_qr_value(
+                event.loan.invoice_code,
+                event.loan.issued_store.code,
+                event.loan.container_type,
+            ),
             recovered_store_id=event.store_id,
             recovered_store_code=event.store.code,
             recovered_store_name=event.store.name,

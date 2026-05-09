@@ -1,7 +1,19 @@
+import hashlib
+
 from app.database import Base, engine
 from app import models  # noqa: F401
 from app.views import create_sqlite_views
 from sqlalchemy import inspect, text
+
+
+def _qr_hash(invoice_code: str, store_code: str, container_type: str) -> str:
+    qr_value = f"{invoice_code}|{store_code}|{container_type}"
+    return hashlib.sha256(qr_value.encode("utf-8")).hexdigest()
+
+
+def _legacy_qr_hash(invoice_code: str, store_code: str, container_type: str, loan_id: int) -> str:
+    qr_value = f"{invoice_code}|{store_code}|{container_type}|legacy:{loan_id}"
+    return hashlib.sha256(qr_value.encode("utf-8")).hexdigest()
 
 
 def init_db() -> None:
@@ -96,11 +108,54 @@ def ensure_sqlite_compatibility() -> None:
                     """
                 )
             )
+        conn.execute(text("DROP INDEX IF EXISTS ix_loans_invoice_store_sequence"))
         conn.execute(
             text(
                 """
-                CREATE UNIQUE INDEX IF NOT EXISTS ix_loans_invoice_store_sequence
-                ON loans (issued_store_id, invoice_code, invoice_sequence)
+                CREATE UNIQUE INDEX IF NOT EXISTS ix_loans_invoice_store_type_sequence
+                ON loans (issued_store_id, invoice_code, container_type, invoice_sequence)
                 """
             )
         )
+        rows = list(
+            conn.execute(
+                text(
+                    """
+                    SELECT
+                        loans.id,
+                        loans.invoice_code,
+                        loans.invoice_sequence,
+                        loans.container_type,
+                        stores.code AS store_code
+                    FROM loans
+                    JOIN stores ON stores.id = loans.issued_store_id
+                    """
+                )
+            ).mappings()
+        )
+        qr_hash_groups = {}
+        for row in rows:
+            target_hash = _qr_hash(row["invoice_code"], row["store_code"], row["container_type"])
+            qr_hash_groups.setdefault(target_hash, []).append(row)
+
+        for target_hash, group in qr_hash_groups.items():
+            primary = min(group, key=lambda row: (row["invoice_sequence"] != 1, row["id"]))
+            for row in group:
+                if row["id"] == primary["id"]:
+                    continue
+                conn.execute(
+                    text("UPDATE loans SET qr_token_hash = :qr_token_hash WHERE id = :loan_id"),
+                    {
+                        "loan_id": row["id"],
+                        "qr_token_hash": _legacy_qr_hash(
+                            row["invoice_code"],
+                            row["store_code"],
+                            row["container_type"],
+                            row["id"],
+                        ),
+                    },
+                )
+            conn.execute(
+                text("UPDATE loans SET qr_token_hash = :qr_token_hash WHERE id = :loan_id"),
+                {"loan_id": primary["id"], "qr_token_hash": target_hash},
+            )

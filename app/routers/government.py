@@ -46,7 +46,7 @@ def _remaining(loan: Loan) -> int:
 
 
 def _qr_value(loan: Loan) -> str:
-    return generate_qr_value(loan.invoice_code, loan.issued_store.code)
+    return generate_qr_value(loan.invoice_code, loan.issued_store.code, loan.container_type)
 
 
 def _is_expired(loan: Loan) -> bool:
