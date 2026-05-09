@@ -1,7 +1,6 @@
 from sqlalchemy import (
     Boolean,
     Column,
-    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -117,42 +116,4 @@ class ScanEvent(Base):
     created_at = Column(DateTime, nullable=False, default=now_taipei, index=True)
 
     loan = relationship("Loan", back_populates="scan_events")
-    store = relationship("Store")
-
-
-class DailySoldStats(Base):
-    __tablename__ = "daily_sold_stats"
-    __table_args__ = (
-        UniqueConstraint("stat_date", "store_id", "container_type", name="uq_daily_sold_stats_date_store_type"),
-    )
-
-    id = Column(Integer, primary_key=True)
-    stat_date = Column(Date, nullable=False, index=True)
-    store_id = Column(Integer, ForeignKey("stores.id"), nullable=False, index=True)
-    container_type = Column(String(20), nullable=False, index=True)
-    sold_count = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime, nullable=False, default=now_taipei)
-    updated_at = Column(DateTime, nullable=False, default=now_taipei)
-
-    store = relationship("Store")
-
-
-class DailyRecoveredStats(Base):
-    __tablename__ = "daily_recovered_stats"
-    __table_args__ = (
-        UniqueConstraint("stat_date", "store_id", "container_type", name="uq_daily_recovered_stats_date_store_type"),
-    )
-
-    id = Column(Integer, primary_key=True)
-    stat_date = Column(Date, nullable=False, index=True)
-    store_id = Column(Integer, ForeignKey("stores.id"), nullable=False, index=True)
-    container_type = Column(String(20), nullable=False, index=True)
-    recovered_count = Column(Integer, nullable=False, default=0)
-    normal_count = Column(Integer, nullable=False, default=0)
-    expired_count = Column(Integer, nullable=False, default=0)
-    abnormal_count = Column(Integer, nullable=False, default=0)
-    cross_store_count = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime, nullable=False, default=now_taipei)
-    updated_at = Column(DateTime, nullable=False, default=now_taipei)
-
     store = relationship("Store")

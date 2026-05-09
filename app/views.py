@@ -40,45 +40,6 @@ def create_sqlite_views(engine: Engine) -> None:
             )
         )
 
-        conn.execute(
-            text(
-                """
-                CREATE VIEW v_daily_sold_stats AS
-                SELECT
-                    d.stat_date,
-                    d.store_id,
-                    s.code AS store_code,
-                    s.name AS store_name,
-                    d.container_type,
-                    d.sold_count,
-                    d.updated_at
-                FROM daily_sold_stats d
-                JOIN stores s ON s.id = d.store_id
-                """
-            )
-        )
-
-        conn.execute(
-            text(
-                """
-                CREATE VIEW v_daily_recovered_stats AS
-                SELECT
-                    d.stat_date,
-                    d.store_id,
-                    s.code AS store_code,
-                    s.name AS store_name,
-                    d.container_type,
-                    d.recovered_count,
-                    d.normal_count,
-                    d.expired_count,
-                    d.abnormal_count,
-                    d.cross_store_count,
-                    d.updated_at
-                FROM daily_recovered_stats d
-                JOIN stores s ON s.id = d.store_id
-                """
-            )
-        )
 
         conn.execute(
             text(

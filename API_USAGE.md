@@ -481,7 +481,7 @@ Response `200`:
 
 ### GET `/government/daily/sold`
 
-每日賣出彙總，讀 `daily_sold_stats`。每一天、每店、每容器類型一列。
+每日賣出彙總，讀每日 CSV 報表檔聚合。每一天只有一個 CSV，產生 QR 或同發票追加杯數時會新增一筆 `eventType=sold` log row。
 
 Query params:
 
@@ -513,7 +513,7 @@ Response `200`:
 
 ### GET `/government/daily/recovered`
 
-每日回收彙總，讀 `daily_recovered_stats`。每一次成功掃碼回收都會把當天回收數加一。
+每日回收彙總，讀每日 CSV 報表檔聚合。每一次成功掃碼回收都會新增一筆 `eventType=recovered` log row。
 
 Query params:
 
@@ -709,27 +709,46 @@ SELECT * FROM v_store_stats;
 SELECT * FROM v_abnormal_events ORDER BY created_at DESC;
 ```
 
-### `v_daily_sold_stats`
+## 每日 CSV 報表
 
-每日賣出彙總，來自 `daily_sold_stats`，含店家代號與店名，方便政府端 web 直接做日報表。
+每日報表預設輸出到 `data/daily_reports/`，也可以用環境變數 `DAILY_REPORT_DIR` 改路徑。檔名格式：
 
-```sql
-SELECT * FROM v_daily_sold_stats ORDER BY stat_date, store_code;
+```text
+daily_report_YYYY-MM-DD.csv
 ```
 
-### `v_daily_recovered_stats`
+同一天的賣出與回收都寫在同一個 CSV，透過 `eventType` 區分：
 
-每日回收彙總，來自 `daily_recovered_stats`，含正常、逾期、異常、跨店回收分項。
+| eventType | 寫入時機 |
+|---|---|
+| `sold` | `POST /merchant/qr-codes` 成功後追加一列 |
+| `recovered` | `POST /merchant/returns/scan` 成功回收一杯後追加一列 |
 
-```sql
-SELECT * FROM v_daily_recovered_stats ORDER BY stat_date, store_code;
-```
+常用欄位：
+
+| Column | Meaning |
+|---|---|
+| `eventType` | `sold` 或 `recovered` |
+| `occurredAt` | 事件時間 |
+| `loanId` | 發票批次 ID |
+| `invoiceCode` | 發票號碼 |
+| `qrValue` | QR 文字值 |
+| `storeId`, `storeCode`, `storeName` | 本事件所屬店家；賣出為出餐店，回收為掃碼店 |
+| `issuedStore*` | 原始出餐店 |
+| `returnedStore*` | 回收店，只有回收事件有值 |
+| `containerType` | `cup` 或 `meal_box` |
+| `cupCount` | 本次事件杯數；賣出可能大於 1，回收固定為 1 |
+| `totalCupCount` | 該 QR/發票目前累計杯數 |
+| `returnedCount` | 該 QR/發票目前已回收杯數 |
+| `remainingCupCount` | 該 QR/發票目前未回收杯數 |
+| `condition`, `result`, `reason` | 回收狀態與原因 |
+| `isExpired`, `isAbnormal`, `isCrossStore` | 回收統計旗標 |
 
 ## Notes
 
 - 時間以 `Asia/Taipei` 計算 3 天歸還期限，SQLite 內存 naive datetime。
 - `qrValue` 使用 `發票代號|商家代號`；同一店家同一張發票只有一個 QR。
 - DB 保存 `cup_count`、`returned_count` 與 SHA-256 `qr_token_hash`，不保存明文 `qrValue`。
-- DB 另存 `daily_sold_stats` 與 `daily_recovered_stats`，每天每店每類型一列，用於政府端日統計。
+- 每日統計不再用 DB table；後端以每日 CSV append log 控制資料量，政府端 daily API 會讀 CSV 聚合。
 - 第一版不串真實金流，只保存 `refund_ledgers` 作為後端退押帳本。
 - 第一版不追蹤單一實體容器 ID。

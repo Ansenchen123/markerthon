@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.daily_reports import read_daily_recovered_summary, read_daily_sold_summary
 from app.database import get_db
-from app.models import DailyRecoveredStats, DailySoldStats, GovernmentUser, Loan, ScanEvent, Store
+from app.models import GovernmentUser, Loan, ScanEvent, Store
 from app.schemas import (
     ContainerType,
     GovernmentAnomaliesResponse,
@@ -313,27 +314,23 @@ def get_government_daily_sold_stats(
     db: Session = Depends(get_db),
     _: GovernmentUser = Depends(get_current_government_user),
 ) -> GovernmentDailySoldStatsResponse:
-    statement = select(DailySoldStats).where(
-        DailySoldStats.stat_date >= from_date,
-        DailySoldStats.stat_date <= to_date,
+    rows = read_daily_sold_summary(
+        from_date,
+        to_date,
+        store_id=store_id,
+        container_type=container_type.value if container_type is not None else None,
     )
-    if store_id is not None:
-        statement = statement.where(DailySoldStats.store_id == store_id)
-    if container_type is not None:
-        statement = statement.where(DailySoldStats.container_type == container_type.value)
-    statement = statement.order_by(DailySoldStats.stat_date, DailySoldStats.store_id, DailySoldStats.container_type)
-    rows = list(db.scalars(statement))
 
     return GovernmentDailySoldStatsResponse(
         **{"from": from_date, "to": to_date},
         rows=[
             GovernmentDailySoldStatsRow(
-                statDate=row.stat_date,
-                storeId=row.store_id,
-                storeCode=row.store.code,
-                storeName=row.store.name,
-                containerType=row.container_type,
-                soldCount=row.sold_count,
+                statDate=row["statDate"],
+                storeId=row["storeId"],
+                storeCode=row["storeCode"],
+                storeName=row["storeName"],
+                containerType=row["containerType"],
+                soldCount=row["soldCount"],
             )
             for row in rows
         ],
@@ -349,35 +346,27 @@ def get_government_daily_recovered_stats(
     db: Session = Depends(get_db),
     _: GovernmentUser = Depends(get_current_government_user),
 ) -> GovernmentDailyRecoveredStatsResponse:
-    statement = select(DailyRecoveredStats).where(
-        DailyRecoveredStats.stat_date >= from_date,
-        DailyRecoveredStats.stat_date <= to_date,
+    rows = read_daily_recovered_summary(
+        from_date,
+        to_date,
+        store_id=store_id,
+        container_type=container_type.value if container_type is not None else None,
     )
-    if store_id is not None:
-        statement = statement.where(DailyRecoveredStats.store_id == store_id)
-    if container_type is not None:
-        statement = statement.where(DailyRecoveredStats.container_type == container_type.value)
-    statement = statement.order_by(
-        DailyRecoveredStats.stat_date,
-        DailyRecoveredStats.store_id,
-        DailyRecoveredStats.container_type,
-    )
-    rows = list(db.scalars(statement))
 
     return GovernmentDailyRecoveredStatsResponse(
         **{"from": from_date, "to": to_date},
         rows=[
             GovernmentDailyRecoveredStatsRow(
-                statDate=row.stat_date,
-                storeId=row.store_id,
-                storeCode=row.store.code,
-                storeName=row.store.name,
-                containerType=row.container_type,
-                recoveredCount=row.recovered_count,
-                normalCount=row.normal_count,
-                expiredCount=row.expired_count,
-                abnormalCount=row.abnormal_count,
-                crossStoreCount=row.cross_store_count,
+                statDate=row["statDate"],
+                storeId=row["storeId"],
+                storeCode=row["storeCode"],
+                storeName=row["storeName"],
+                containerType=row["containerType"],
+                recoveredCount=row["recoveredCount"],
+                normalCount=row["normalCount"],
+                expiredCount=row["expiredCount"],
+                abnormalCount=row["abnormalCount"],
+                crossStoreCount=row["crossStoreCount"],
             )
             for row in rows
         ],

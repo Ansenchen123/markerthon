@@ -9,9 +9,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import sessionmaker
 
+from app.daily_reports import daily_report_path, read_report_rows
 from app.database import Base, get_db
 from app.main import app
-from app.models import DailyRecoveredStats, DailySoldStats, Loan, RefundLedger, ScanEvent
+from app.models import Loan, RefundLedger, ScanEvent
 from app.seed import seed_demo_data
 from app.time_utils import now_taipei
 from app.views import create_sqlite_views
@@ -19,6 +20,7 @@ from app.views import create_sqlite_views
 
 @pytest.fixture()
 def context(tmp_path):
+    os.environ["DAILY_REPORT_DIR"] = str(tmp_path / "reports")
     engine = create_engine(
         f"sqlite:///{tmp_path / 'test.db'}",
         connect_args={"check_same_thread": False},
@@ -225,23 +227,12 @@ def test_invoice_qr_is_reused_and_count_accumulates_per_store(context):
     assert other_store["totalCupCount"] == 1
     assert other_store["qrValue"] == "SAME-INVOICE|bento-shop"
 
-    with SessionLocal() as db:
-        tea_daily = db.scalar(
-            select(DailySoldStats).where(
-                DailySoldStats.store_id == 1,
-                DailySoldStats.container_type == "cup",
-                DailySoldStats.stat_date == now_taipei().date(),
-            )
-        )
-        bento_daily = db.scalar(
-            select(DailySoldStats).where(
-                DailySoldStats.store_id == 2,
-                DailySoldStats.container_type == "cup",
-                DailySoldStats.stat_date == now_taipei().date(),
-            )
-        )
-        assert tea_daily.sold_count == 6
-        assert bento_daily.sold_count == 1
+    today = now_taipei().date()
+    rows = read_report_rows(today, today)
+    sold_rows = [row for row in rows if row["eventType"] == "sold"]
+    assert daily_report_path(today).exists()
+    assert sum(int(row["cupCount"]) for row in sold_rows if row["storeCode"] == "tea-shop") == 6
+    assert sum(int(row["cupCount"]) for row in sold_rows if row["storeCode"] == "bento-shop") == 1
 
 
 def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
@@ -268,16 +259,14 @@ def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
         assert loan.returned_store_id != loan.issued_store_id
         ledger = db.scalar(select(RefundLedger).where(RefundLedger.loan_id == loan.id))
         assert ledger.refund_amount == 20
-        daily_recovered = db.scalar(
-            select(DailyRecoveredStats).where(
-                DailyRecoveredStats.store_id == loan.returned_store_id,
-                DailyRecoveredStats.container_type == "cup",
-                DailyRecoveredStats.stat_date == now_taipei().date(),
-            )
-        )
-        assert daily_recovered.recovered_count == 1
-        assert daily_recovered.normal_count == 1
-        assert daily_recovered.cross_store_count == 1
+
+    today = now_taipei().date()
+    rows = read_report_rows(today, today)
+    recovered_rows = [row for row in rows if row["eventType"] == "recovered" and row["storeCode"] == "bento-shop"]
+    assert len(recovered_rows) == 1
+    assert recovered_rows[0]["isExpired"] == "false"
+    assert recovered_rows[0]["isAbnormal"] == "false"
+    assert recovered_rows[0]["isCrossStore"] == "true"
 
     duplicate = client.post(
         "/merchant/returns/scan",
@@ -442,14 +431,13 @@ def test_government_views_expose_overview_store_stats_and_abnormal_events(contex
         assert abnormal["reason"] == "polluted"
         assert abnormal["note"] == "sticky residue"
 
-        daily_sold = db.execute(text("SELECT sold_count FROM v_daily_sold_stats WHERE store_code = 'tea-shop'")).mappings().one()
-        assert daily_sold["sold_count"] == 1
-
-        daily_recovered = db.execute(
-            text("SELECT recovered_count, abnormal_count FROM v_daily_recovered_stats WHERE store_code = 'tea-shop'")
-        ).mappings().one()
-        assert daily_recovered["recovered_count"] == 1
-        assert daily_recovered["abnormal_count"] == 1
+    today = now_taipei().date()
+    rows = read_report_rows(today, today)
+    assert any(row["eventType"] == "sold" and row["storeCode"] == "tea-shop" for row in rows)
+    assert any(
+        row["eventType"] == "recovered" and row["storeCode"] == "tea-shop" and row["isAbnormal"] == "true"
+        for row in rows
+    )
 
 
 def test_government_read_only_apis_cover_overview_stores_invoices_and_anomalies(context):
