@@ -1,6 +1,6 @@
 :root {
   --device-width: 384px;
-  --bottom-nav-height: 78px;
+  --bottom-nav-height: calc(78px + env(safe-area-inset-bottom, 0px));
   --bottom-nav-offset: 0px;
   color: #132238;
   background: #eef3e7;
@@ -443,6 +443,13 @@ h1 {
   box-shadow: 0 12px 30px rgba(24, 48, 31, 0.16);
 }
 
+@media (max-width : 768px) {
+    .bottom-nav {
+      /* margin-bottom: 3.5rem; */
+      position: fixed;
+    }
+}
+
 .bottom-nav button {
   min-width: 48px;
   display: grid;
@@ -495,6 +502,16 @@ h1 {
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+@media (max-width:768px) {
+    .scan-panel{
+      position: fixed;
+      /* height: 150vh; */
+    }
+    .scanner-view{
+      padding: 1rem 0;
+    }
 }
 
 .scan-panel::-webkit-scrollbar {
@@ -937,6 +954,12 @@ h1 {
   color: #ffffff;
   font-weight: 800;
   box-shadow: 0 8px 18px rgba(23, 100, 58, 0.18);
+}
+
+@media (max-width:768px) {
+  .auth-button{
+    margin-bottom: 10rem;
+  }
 }
 
 .auth-button.logout {

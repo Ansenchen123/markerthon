@@ -1850,7 +1850,7 @@ function RecordsPage({
       {isLoading && <p className="form-success">正在讀取紀錄...</p>}
 
       <ul className="record-list">
-        {recordItems.map((record) => (
+        {recordItems.toReversed().map((record) => (
           <li
             className={record.type === '借出' ? 'loaned' : 'returned'}
             key={record.id}
