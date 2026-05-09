@@ -4,6 +4,7 @@ import csv
 import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from threading import Lock
 from typing import Iterable
 
 from sqlalchemy import select
@@ -43,6 +44,8 @@ REPORT_COLUMNS = [
     "note",
 ]
 
+_REPORT_WRITE_LOCK = Lock()
+
 
 def report_dir() -> Path:
     return Path(os.getenv("DAILY_REPORT_DIR", settings.daily_report_dir))
@@ -67,7 +70,6 @@ def _remaining(loan: Loan) -> int:
 def _append_report_row(occurred_at: datetime, row: dict[str, object]) -> None:
     path = daily_report_path(occurred_at.date())
     path.parent.mkdir(parents=True, exist_ok=True)
-    needs_header = not path.exists() or path.stat().st_size == 0
 
     output = {column: "" for column in REPORT_COLUMNS}
     output.update({key: value for key, value in row.items() if key in output})
@@ -81,11 +83,13 @@ def _append_report_row(occurred_at: datetime, row: dict[str, object]) -> None:
         else:
             output[key] = str(value)
 
-    with path.open("a", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=REPORT_COLUMNS)
-        if needs_header:
-            writer.writeheader()
-        writer.writerow(output)
+    with _REPORT_WRITE_LOCK:
+        needs_header = not path.exists() or path.stat().st_size == 0
+        with path.open("a", newline="", encoding="utf-8") as file:
+            writer = csv.DictWriter(file, fieldnames=REPORT_COLUMNS)
+            if needs_header:
+                writer.writeheader()
+            writer.writerow(output)
 
 
 def append_sold_report_row(*, loan: Loan, qr_value: str, added_count: int, occurred_at: datetime) -> None:

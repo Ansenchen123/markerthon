@@ -7,7 +7,7 @@ import {
   type MonthlyUsage,
   type RegionDistribution,
   type StoreDetail,
-  type TopCupStores,
+  type TopStores,
 } from './api';
 
 const today = new Date();
@@ -175,12 +175,12 @@ function renderRegionCard(data: RegionDistribution) {
   `;
 }
 
-function renderTopStoresCard(data: TopCupStores) {
+function renderTopStoresCard(data: TopStores) {
   return `
     <section class="panel table-panel">
       <div class="panel-head">
-        <h2>環保杯使用 Top 10 商家 ${icon('info')}</h2>
-        <div class="api-pill">limit=10 category=${data.category ?? 'cup'}</div>
+        <h2>循環容器使用 Top 10 商家 ${icon('info')}</h2>
+        <div class="api-pill">limit=10 all categories</div>
       </div>
       <table>
         <thead>
@@ -204,7 +204,7 @@ function renderTopStoresCard(data: TopCupStores) {
   `;
 }
 
-function renderStoreCard(data: StoreDetail | null, stores: TopCupStores) {
+function renderStoreCard(data: StoreDetail | null, stores: TopStores) {
   return `
     <section class="panel search-panel">
       <div class="panel-head">
@@ -371,10 +371,10 @@ async function renderDashboard() {
           ${renderMonthlyUsageCard(data.monthlyUsage)}
           ${renderEnterpriseCard(data.enterpriseCounts)}
           ${renderRegionCard(data.regionDistribution)}
-          ${renderTopStoresCard(data.topCupStores)}
-          ${renderStoreCard(data.storeDetail, data.topCupStores)}
+          ${renderTopStoresCard(data.topStores)}
+          ${renderStoreCard(data.storeDetail, data.topStores)}
         </div>
-        <footer>依 API_USAGE.md 串接五個政府端 Web API；系統會自動以 admin@gmail.com 登入。</footer>
+        <footer>依 API_USAGE.md 串接五個政府端 Web API；系統會自動以 gov.admin@example.com 登入。</footer>
       </div>
     `;
 

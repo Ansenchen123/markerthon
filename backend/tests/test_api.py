@@ -1,4 +1,5 @@
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 os.environ["AUTO_INIT_DB"] = "false"
@@ -300,6 +301,35 @@ def test_create_qr_code_records_category_and_separates_categories(context):
     assert cup_batch["loanId"] != meal_box_batch["loanId"]
     assert cup_batch["totalCount"] == 1
     assert cup_batch["qrValue"] == "MEAL-BOX-001|tea-shop|cup"
+
+
+def test_daily_report_header_is_written_once_for_parallel_category_creates(context):
+    client, _ = context
+    headers = login_headers(client)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(
+                lambda category: create_qr_batch(
+                    client,
+                    headers,
+                    invoice="PARALLEL-HEADER-001",
+                    item_count=1,
+                    category=category,
+                ),
+                ("cup", "meal_box"),
+            )
+        )
+
+    assert {result["category"] for result in results} == {"cup", "meal_box"}
+
+    today = now_taipei().date()
+    report_text = daily_report_path(today).read_text(encoding="utf-8")
+    assert report_text.count("eventType,occurredAt,loanId") == 1
+
+    rows = read_report_rows(today, today)
+    sold_rows = [row for row in rows if row["invoiceCode"] == "PARALLEL-HEADER-001"]
+    assert len(sold_rows) == 2
 
 
 def test_invoice_qr_is_reused_and_count_accumulates_per_store(context):

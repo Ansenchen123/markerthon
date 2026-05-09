@@ -43,11 +43,10 @@ export type RegionDistribution = {
   }>;
 };
 
-export type TopCupStores = {
+export type TopStores = {
   month: string;
   from?: string;
   to?: string;
-  category?: string;
   rankings: Array<{
     rank: number;
     storeId: number;
@@ -91,7 +90,7 @@ export type DashboardData = {
   monthlyUsage: MonthlyUsage;
   enterpriseCounts: EnterpriseCounts;
   regionDistribution: RegionDistribution;
-  topCupStores: TopCupStores;
+  topStores: TopStores;
   storeDetail: StoreDetail | null;
 };
 
@@ -104,8 +103,8 @@ export type DashboardQuery = {
 const API_BASE_URL = 'http://127.0.0.1:8000';
 const TOKEN_KEY = 'governmentAccessToken';
 const GOVERNMENT_LOGIN = {
-  userEmail: 'admin@gmail.com',
-  password: '12345678',
+  userEmail: 'gov.admin@example.com',
+  password: 'password123',
 };
 
 let accessToken = localStorage.getItem(TOKEN_KEY) ?? '';
@@ -180,8 +179,8 @@ export async function getRegionDistribution() {
   return authenticatedRequest<RegionDistribution>('/government/web/region-distribution');
 }
 
-export async function getTopCupStores(query: Omit<DashboardQuery, 'storeId'>, limit = 10) {
-  return authenticatedRequest<TopCupStores>(`/government/web/top-cup-stores?${buildQuery(query, limit)}`);
+export async function getTopStores(query: Omit<DashboardQuery, 'storeId'>, limit = 10) {
+  return authenticatedRequest<TopStores>(`/government/web/top-stores?${buildQuery(query, limit)}`);
 }
 
 export async function getStoreDetail(query: DashboardQuery) {
@@ -197,11 +196,11 @@ export async function getStoreDetail(query: DashboardQuery) {
 
 export async function getDashboardData(query: DashboardQuery): Promise<DashboardData> {
   const baseQuery = { year: query.year, month: query.month };
-  const [monthlyUsage, enterpriseCounts, regionDistribution, topCupStores] = await Promise.all([
+  const [monthlyUsage, enterpriseCounts, regionDistribution, topStores] = await Promise.all([
     getMonthlyUsage(baseQuery),
     getEnterpriseCounts(baseQuery),
     getRegionDistribution(),
-    getTopCupStores(baseQuery, 10),
+    getTopStores(baseQuery, 10),
   ]);
 
   const storeDetail = await getStoreDetail(query);
@@ -210,7 +209,7 @@ export async function getDashboardData(query: DashboardQuery): Promise<Dashboard
     monthlyUsage,
     enterpriseCounts,
     regionDistribution,
-    topCupStores,
+    topStores,
     storeDetail,
   };
 }
