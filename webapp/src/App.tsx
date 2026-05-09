@@ -1,9 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Html5Qrcode,
+  Html5QrcodeScannerState,
+  Html5QrcodeSupportedFormats,
+} from 'html5-qrcode';
 import QRCode from 'qrcode';
 import globeImage from '../assets/global.png';
 import spoonImage from '../assets/spoon.png';
 import {
   api,
+  type GovernmentAuthResponse,
+  type GovernmentEnterpriseCountsResponse,
+  type GovernmentMonthlyUsageResponse,
+  type GovernmentRegionDistributionResponse,
+  type GovernmentStoreDetailResponse,
+  type GovernmentTopCupStoresResponse,
   type LoginResponse,
   type MerchantCategory,
   type MerchantQrCodeResponse,
@@ -57,7 +68,25 @@ type AuthSession = {
   store: LoginResponse['store'];
 };
 
+type GovernmentSession = {
+  accessToken: string;
+  tokenType: string;
+  user: GovernmentAuthResponse['user'];
+};
+
+type GovernmentDashboardState = {
+  monthlyUsage: GovernmentMonthlyUsageResponse | null;
+  enterpriseCounts: GovernmentEnterpriseCountsResponse | null;
+  regionDistribution: GovernmentRegionDistributionResponse | null;
+  topCupStores: GovernmentTopCupStoresResponse | null;
+  storeDetail: GovernmentStoreDetailResponse | null;
+  selectedStoreId: string;
+  isLoading: boolean;
+  error: string;
+};
+
 const AUTH_COOKIE_NAME = 'green_dining_auth';
+const GOVERNMENT_AUTH_COOKIE_NAME = 'green_dining_government_auth';
 const AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
 const fallbackStore: StoreInfo = {
@@ -99,6 +128,10 @@ function saveAuthCookie(session: AuthSession) {
   document.cookie = `${AUTH_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(session))}; path=/; max-age=${AUTH_COOKIE_MAX_AGE}; SameSite=Lax`;
 }
 
+function saveGovernmentAuthCookie(session: GovernmentSession) {
+  document.cookie = `${GOVERNMENT_AUTH_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(session))}; path=/; max-age=${AUTH_COOKIE_MAX_AGE}; SameSite=Lax`;
+}
+
 function readAuthCookie(): AuthSession | null {
   const value = readCookie(AUTH_COOKIE_NAME);
 
@@ -113,8 +146,30 @@ function readAuthCookie(): AuthSession | null {
   }
 }
 
+function readGovernmentAuthCookie(): GovernmentSession | null {
+  const value = readCookie(GOVERNMENT_AUTH_COOKIE_NAME);
+
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(decodeURIComponent(value)) as GovernmentSession;
+  } catch {
+    return null;
+  }
+}
+
 function clearAuthCookie() {
   document.cookie = `${AUTH_COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax`;
+}
+
+function clearGovernmentAuthCookie() {
+  document.cookie = `${GOVERNMENT_AUTH_COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax`;
+}
+
+function formatPercent(value: number) {
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 function formatDateForApi(date: Date) {
@@ -156,7 +211,7 @@ function createDashboardStats(
   return {
     soldTotal,
     recoveredTotal,
-    activeTotal: sold?.remainingCount ?? 0,
+    activeTotal: Math.max(0, soldTotal - recoveredTotal),
     dailyRows: soldRows.map((soldRow) => {
       const recoveredRow = recoveredByDate.get(soldRow.statDate);
 
@@ -193,6 +248,22 @@ export function App() {
   const [returnError, setReturnError] = useState('');
   const [isReturning, setIsReturning] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isGovernmentLoggedIn, setIsGovernmentLoggedIn] = useState(false);
+  const [governmentAccessToken, setGovernmentAccessToken] = useState('');
+  const [governmentTokenType, setGovernmentTokenType] = useState('');
+  const [governmentUser, setGovernmentUser] = useState<GovernmentAuthResponse['user'] | null>(
+    null,
+  );
+  const [governmentDashboard, setGovernmentDashboard] = useState<GovernmentDashboardState>({
+    monthlyUsage: null,
+    enterpriseCounts: null,
+    regionDistribution: null,
+    topCupStores: null,
+    storeDetail: null,
+    selectedStoreId: '',
+    isLoading: false,
+    error: '',
+  });
   const [statsState, setStatsState] = useState<StatsState>({
     sold: null,
     recovered: null,
@@ -238,8 +309,28 @@ export function App() {
     });
   };
 
+  const handleGovernmentLoginSuccess = (data: GovernmentAuthResponse) => {
+    setGovernmentAccessToken(data.accessToken);
+    setGovernmentTokenType(data.tokenType);
+    setGovernmentUser(data.user);
+    setIsGovernmentLoggedIn(true);
+    setIsLoggedIn(false);
+    setScanView('home');
+    saveGovernmentAuthCookie({
+      accessToken: data.accessToken,
+      tokenType: data.tokenType,
+      user: data.user,
+    });
+  };
+
   useEffect(() => {
     const session = readAuthCookie();
+    const governmentSession = readGovernmentAuthCookie();
+
+    if (governmentSession?.accessToken && governmentSession.user) {
+      handleGovernmentLoginSuccess(governmentSession);
+      return;
+    }
 
     if (session?.accessToken && session.store) {
       handleLoginSuccess(session);
@@ -248,6 +339,7 @@ export function App() {
 
   const logout = () => {
     clearAuthCookie();
+    clearGovernmentAuthCookie();
     setAccessToken('');
     setTokenType('');
     setStore(fallbackStore);
@@ -263,6 +355,10 @@ export function App() {
       error: '',
     });
     setIsLoggedIn(false);
+    setIsGovernmentLoggedIn(false);
+    setGovernmentAccessToken('');
+    setGovernmentTokenType('');
+    setGovernmentUser(null);
     setAuthPage('login');
     setActivePage('home');
     setScanView('home');
@@ -274,7 +370,7 @@ export function App() {
   };
 
   const loadMerchantStats = async () => {
-    if (!accessToken || !store.name) {
+    if (!accessToken || store.id <= 0) {
       return;
     }
 
@@ -283,8 +379,8 @@ export function App() {
 
     try {
       const [sold, recovered] = await Promise.all([
-        api.stats.sold({ storeName: store.name, ...range }, accessToken),
-        api.stats.recovered({ storeName: store.name, ...range }, accessToken),
+        api.stats.sold({ storeId: store.id, ...range }, accessToken),
+        api.stats.recovered({ storeId: store.id, ...range }, accessToken),
       ]);
 
       setStatsState({
@@ -307,6 +403,58 @@ export function App() {
       void loadMerchantStats();
     }
   }, [isLoggedIn, accessToken, store.id]);
+
+  const loadGovernmentDashboard = async (storeIdText = governmentDashboard.selectedStoreId) => {
+    if (!governmentAccessToken) {
+      return;
+    }
+
+    setGovernmentDashboard((current) => ({
+      ...current,
+      selectedStoreId: storeIdText,
+      isLoading: true,
+      error: '',
+    }));
+
+    try {
+      const [monthlyUsage, enterpriseCounts, regionDistribution, topCupStores] =
+        await Promise.all([
+          api.government.web.monthlyUsage(governmentAccessToken),
+          api.government.web.enterpriseCounts(governmentAccessToken),
+          api.government.web.regionDistribution(governmentAccessToken),
+          api.government.web.topCupStores(governmentAccessToken, { limit: 10 }),
+        ]);
+      const fallbackStoreId = topCupStores.rankings[0]?.storeId;
+      const selectedStoreId = Number(storeIdText || fallbackStoreId || 0);
+      const storeDetail =
+        selectedStoreId > 0
+          ? await api.government.web.storeDetail(selectedStoreId, governmentAccessToken)
+          : null;
+
+      setGovernmentDashboard({
+        monthlyUsage,
+        enterpriseCounts,
+        regionDistribution,
+        topCupStores,
+        storeDetail,
+        selectedStoreId: selectedStoreId > 0 ? String(selectedStoreId) : storeIdText,
+        isLoading: false,
+        error: '',
+      });
+    } catch (err) {
+      setGovernmentDashboard((current) => ({
+        ...current,
+        isLoading: false,
+        error: err instanceof Error ? err.message : '政府端資料讀取失敗',
+      }));
+    }
+  };
+
+  useEffect(() => {
+    if (isGovernmentLoggedIn && governmentAccessToken) {
+      void loadGovernmentDashboard();
+    }
+  }, [isGovernmentLoggedIn, governmentAccessToken]);
 
   const createMerchantQrCode = async () => {
     setQrError('');
@@ -358,15 +506,23 @@ export function App() {
     }
   };
 
-  const scanReturn = async () => {
+  const scanReturn = async (scannedQrValue = returnQrValue) => {
+    const qrValue = scannedQrValue.trim();
+
     setReturnError('');
     setReturnMessage('');
+
+    if (!qrValue) {
+      setReturnError('請先掃描或輸入 QR Value');
+      return;
+    }
+
     setIsReturning(true);
 
     try {
       const data = await api.merchant.scanReturn(
         {
-          qrValue: returnQrValue.trim(),
+          qrValue,
         },
         accessToken,
       );
@@ -430,6 +586,23 @@ export function App() {
     );
   };
 
+  if (isGovernmentLoggedIn && governmentUser) {
+    return (
+      <GovernmentDashboard
+        accessToken={governmentAccessToken}
+        tokenType={governmentTokenType}
+        user={governmentUser}
+        dashboard={governmentDashboard}
+        onChangeStoreId={(value) =>
+          setGovernmentDashboard((current) => ({ ...current, selectedStoreId: value }))
+        }
+        onSearchStore={() => void loadGovernmentDashboard(governmentDashboard.selectedStoreId)}
+        onRefresh={() => void loadGovernmentDashboard(governmentDashboard.selectedStoreId)}
+        onLogout={logout}
+      />
+    );
+  }
+
   return (
     <main className="app-frame">
       <section className="phone-screen" aria-label="綠食堂 WebApp">
@@ -454,6 +627,7 @@ export function App() {
               mode={authPage}
               onSwitchMode={setAuthPage}
               onLoginSuccess={handleLoginSuccess}
+              onGovernmentLoginSuccess={handleGovernmentLoginSuccess}
               onRegisterSuccess={handleLoginSuccess}
             />
           )}
@@ -494,14 +668,13 @@ export function App() {
 
             {scanView === 'reader' ? (
               <div className="scanner-view">
-                <div className="scanner-lens">
-                  <span className="corner top-left" />
-                  <span className="corner top-right" />
-                  <span className="corner bottom-left" />
-                  <span className="corner bottom-right" />
-                  <div className="scan-line" />
-                  <i className="fa-solid fa-qrcode" aria-hidden="true" />
-                </div>
+                <CameraQrScanner
+                  isPaused={isReturning}
+                  onDetected={(value) => {
+                    setReturnQrValue(value);
+                    void scanReturn(value);
+                  }}
+                />
                 <h2>讀取 QRCode</h2>
                 <p>掃描或貼上 QR Value，送出後會回收 1 個容器</p>
                 <form
@@ -657,19 +830,166 @@ export function App() {
   );
 }
 
+function CameraQrScanner({
+  isPaused,
+  onDetected,
+}: {
+  isPaused: boolean;
+  onDetected: (value: string) => void;
+}) {
+  const elementIdRef = useRef(`qr-reader-${Math.random().toString(36).slice(2)}`);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const detectedRef = useRef(false);
+  const onDetectedRef = useRef(onDetected);
+  const [cameraError, setCameraError] = useState('');
+
+  useEffect(() => {
+    onDetectedRef.current = onDetected;
+  }, [onDetected]);
+
+  useEffect(() => {
+    let isMounted = true;
+    detectedRef.current = false;
+    setCameraError('');
+
+    const scanner = new Html5Qrcode(elementIdRef.current, {
+      formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+      verbose: false,
+    });
+    scannerRef.current = scanner;
+
+    scanner
+      .start(
+        { facingMode: 'environment' },
+        {
+          fps: 10,
+          qrbox: { width: 220, height: 220 },
+          aspectRatio: 1,
+        },
+        async (decodedText) => {
+          const qrValue = decodedText.trim();
+
+          if (detectedRef.current || !qrValue) {
+            return;
+          }
+
+          detectedRef.current = true;
+
+          try {
+            if (scanner.getState() === Html5QrcodeScannerState.SCANNING) {
+              await scanner.stop();
+            }
+          } catch {
+            // The browser may already have closed the stream while unmounting.
+          }
+
+          onDetectedRef.current(qrValue);
+        },
+        () => undefined,
+      )
+      .catch((err: unknown) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setCameraError(
+          err instanceof Error
+            ? err.message
+            : '無法開啟攝像頭，請確認瀏覽器相機權限或改用手動輸入。',
+        );
+      });
+
+    return () => {
+      isMounted = false;
+      detectedRef.current = true;
+      const scannerInstance = scannerRef.current;
+      scannerRef.current = null;
+
+      if (!scannerInstance) {
+        return;
+      }
+
+      const clearScanner = () => {
+        try {
+          scannerInstance.clear();
+        } catch {
+          // Nothing to clear if html5-qrcode has already removed its DOM.
+        }
+      };
+
+      const state = scannerInstance.getState();
+
+      if (
+        state === Html5QrcodeScannerState.SCANNING ||
+        state === Html5QrcodeScannerState.PAUSED
+      ) {
+        void scannerInstance.stop().then(clearScanner).catch(clearScanner);
+        return;
+      }
+
+      clearScanner();
+    };
+  }, []);
+
+  useEffect(() => {
+    const scanner = scannerRef.current;
+
+    if (!scanner) {
+      return;
+    }
+
+    try {
+      const state = scanner.getState();
+
+      if (isPaused && state === Html5QrcodeScannerState.SCANNING) {
+        scanner.pause(true);
+      }
+
+      if (!isPaused && state === Html5QrcodeScannerState.PAUSED && !detectedRef.current) {
+        scanner.resume();
+      }
+    } catch {
+      // Camera state can change while permissions are being resolved.
+    }
+  }, [isPaused]);
+
+  return (
+    <div className="scanner-lens">
+      <div id={elementIdRef.current} className="camera-reader" />
+      <span className="corner top-left" />
+      <span className="corner top-right" />
+      <span className="corner bottom-left" />
+      <span className="corner bottom-right" />
+      {!cameraError && <div className="scan-line" />}
+      {cameraError && (
+        <div className="camera-error">
+          <i className="fa-solid fa-video-slash" aria-hidden="true" />
+          <span>{cameraError}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AuthGate({
   mode,
   onSwitchMode,
   onLoginSuccess,
+  onGovernmentLoginSuccess,
   onRegisterSuccess,
 }: {
   mode: AuthPage;
   onSwitchMode: (mode: AuthPage) => void;
   onLoginSuccess: (data: LoginResponse) => void;
+  onGovernmentLoginSuccess: (data: GovernmentAuthResponse) => void;
   onRegisterSuccess: (data: LoginResponse) => void;
 }) {
   return mode === 'login' ? (
-    <LoginPage onLoginSuccess={onLoginSuccess} onOpenRegister={() => onSwitchMode('register')} />
+    <LoginPage
+      onLoginSuccess={onLoginSuccess}
+      onGovernmentLoginSuccess={onGovernmentLoginSuccess}
+      onOpenRegister={() => onSwitchMode('register')}
+    />
   ) : (
     <RegisterPage
       onRegisterSuccess={onRegisterSuccess}
@@ -793,13 +1113,16 @@ function HomePage({
 
 function LoginPage({
   onLoginSuccess,
+  onGovernmentLoginSuccess,
   onOpenRegister,
 }: {
   onLoginSuccess: (data: LoginResponse) => void;
+  onGovernmentLoginSuccess: (data: GovernmentAuthResponse) => void;
   onOpenRegister: () => void;
 }) {
   const [userEmail, setUserEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loginTarget, setLoginTarget] = useState<'merchant' | 'government'>('merchant');
   const [accepted, setAccepted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -818,8 +1141,13 @@ function LoginPage({
           setIsSubmitting(true);
 
           try {
-            const data = await api.auth.login({ userEmail, password });
-            onLoginSuccess(data);
+            if (loginTarget === 'government') {
+              const data = await api.government.auth.login({ userEmail, password });
+              onGovernmentLoginSuccess(data);
+            } else {
+              const data = await api.auth.login({ userEmail, password });
+              onLoginSuccess(data);
+            }
           } catch (err) {
             setError(err instanceof Error ? err.message : '登入失敗，請稍後再試');
           } finally {
@@ -827,6 +1155,22 @@ function LoginPage({
           }
         }}
       >
+        <div className="auth-target-switch" aria-label="登入身份">
+          <button
+            className={loginTarget === 'merchant' ? 'active' : ''}
+            type="button"
+            onClick={() => setLoginTarget('merchant')}
+          >
+            商家
+          </button>
+          <button
+            className={loginTarget === 'government' ? 'active' : ''}
+            type="button"
+            onClick={() => setLoginTarget('government')}
+          >
+            政府端
+          </button>
+        </div>
         <label>
           Email
           <span className="input-shell">
@@ -835,7 +1179,11 @@ function LoginPage({
               type="email"
               value={userEmail}
               onChange={(event) => setUserEmail(event.target.value)}
-              placeholder="tea.owner@example.com"
+              placeholder={
+                loginTarget === 'government'
+                  ? 'gov.admin@example.com'
+                  : 'tea.owner@example.com'
+              }
               autoComplete="email"
             />
             <i className="fa-regular fa-envelope" aria-hidden="true" />
@@ -867,7 +1215,7 @@ function LoginPage({
         </label>
         {error && <p className="form-error">{error}</p>}
         <button disabled={isSubmitting} type="submit">
-          {isSubmitting ? '登入中...' : '登入帳號'}
+          {isSubmitting ? '登入中...' : loginTarget === 'government' ? '登入政府端' : '登入帳號'}
         </button>
       </form>
 
@@ -1009,6 +1357,225 @@ function SocialLogin() {
         </button>
       </div>
     </div>
+  );
+}
+
+function GovernmentDashboard({
+  user,
+  dashboard,
+  onChangeStoreId,
+  onSearchStore,
+  onRefresh,
+  onLogout,
+}: {
+  accessToken: string;
+  tokenType: string;
+  user: GovernmentAuthResponse['user'];
+  dashboard: GovernmentDashboardState;
+  onChangeStoreId: (value: string) => void;
+  onSearchStore: () => void;
+  onRefresh: () => void;
+  onLogout: () => void;
+}) {
+  const usage = dashboard.monthlyUsage;
+  const enterprise = dashboard.enterpriseCounts;
+  const regions = dashboard.regionDistribution?.regions ?? [];
+  const topStores = dashboard.topCupStores?.rankings ?? [];
+  const storeDetail = dashboard.storeDetail;
+  const maxDaily = Math.max(1, ...(usage?.daily ?? []).map((item) => item.issuedCount));
+  const maxRegion = Math.max(1, ...regions.map((item) => item.enterpriseCount));
+
+  return (
+    <main className="gov-shell">
+      <aside className="gov-sidebar">
+        <div className="gov-brand">
+          <span className="gov-logo">L</span>
+          <div>
+            <strong>環保餐具使用管理平台</strong>
+            <small>政府管理後台</small>
+          </div>
+        </div>
+        <nav className="gov-menu" aria-label="政府端五個功能">
+          {[
+            ['fa-solid fa-chart-line', '本月使用情況'],
+            ['fa-solid fa-building', '企業加入數量'],
+            ['fa-solid fa-map-location-dot', '地區數量分布'],
+            ['fa-solid fa-ranking-star', 'Top 10 商家'],
+            ['fa-solid fa-store', '特定店家查詢'],
+          ].map(([icon, label]) => (
+            <a href={`#${label}`} key={label}>
+              <i className={icon} aria-hidden="true" />
+              {label}
+            </a>
+          ))}
+        </nav>
+      </aside>
+
+      <section className="gov-main">
+        <header className="gov-topbar">
+          <div>
+            <span>總覽儀表板</span>
+            <h1>政府管理後台</h1>
+          </div>
+          <div className="gov-user">
+            <button type="button" onClick={onRefresh}>
+              <i className="fa-solid fa-rotate" aria-hidden="true" />
+              更新
+            </button>
+            <span>{user.userEmail}</span>
+            <button type="button" onClick={onLogout}>登出</button>
+          </div>
+        </header>
+
+        {dashboard.error && <p className="gov-error">{dashboard.error}</p>}
+        {dashboard.isLoading && <p className="gov-loading">正在讀取政府端 API...</p>}
+
+        <div className="gov-grid">
+          <article className="gov-card gov-card-usage" id="本月使用情況">
+            <div className="gov-card-title">
+              <h2>本月使用情況</h2>
+              <span>{usage?.month ?? '-'}</span>
+            </div>
+            <p className="gov-endpoint">GET /government/web/monthly-usage</p>
+            <div className="gov-kpis">
+              <div>
+                <span>借出</span>
+                <strong>{usage?.issuedCount ?? 0}</strong>
+              </div>
+              <div>
+                <span>回收</span>
+                <strong>{usage?.returnedCount ?? 0}</strong>
+              </div>
+              <div>
+                <span>未歸還</span>
+                <strong>{usage?.remainingCount ?? 0}</strong>
+              </div>
+              <div>
+                <span>回收率</span>
+                <strong>{formatPercent(usage?.recoveryRate ?? 0)}</strong>
+              </div>
+            </div>
+            <div className="gov-bars" aria-label="本月每日使用趨勢">
+              {(usage?.daily ?? []).map((item) => (
+                <div className="gov-bar" key={item.statDate}>
+                  <span
+                    style={{ height: `${Math.max(10, (item.issuedCount / maxDaily) * 120)}px` }}
+                  />
+                  <small>{item.statDate.slice(5)}</small>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="gov-card gov-card-enterprise" id="企業加入數量">
+            <div className="gov-card-title">
+              <h2>企業加入數量</h2>
+              <i className="fa-solid fa-building" aria-hidden="true" />
+            </div>
+            <p className="gov-endpoint">GET /government/web/enterprise-counts</p>
+            <div className="gov-big-number">
+              <span>本月新增</span>
+              <strong>{enterprise?.monthJoinedCount ?? 0}</strong>
+            </div>
+            <p>企業總數：{enterprise?.totalEnterpriseCount ?? 0}</p>
+          </article>
+
+          <article className="gov-card gov-card-region" id="地區數量分布">
+            <div className="gov-card-title">
+              <h2>地區數量分布</h2>
+              <i className="fa-solid fa-map-location-dot" aria-hidden="true" />
+            </div>
+            <p className="gov-endpoint">GET /government/web/region-distribution</p>
+            <ul className="gov-region-list">
+              {regions.map((item) => (
+                <li key={item.region}>
+                  <span>{item.region}</span>
+                  <strong>{item.enterpriseCount}</strong>
+                  <em style={{ width: `${(item.enterpriseCount / maxRegion) * 100}%` }} />
+                </li>
+              ))}
+            </ul>
+          </article>
+
+          <article className="gov-card gov-card-top" id="Top 10 商家">
+            <div className="gov-card-title">
+              <h2>環保杯使用 Top 10 商家</h2>
+              <span>{dashboard.topCupStores?.month ?? '-'}</span>
+            </div>
+            <p className="gov-endpoint">GET /government/web/top-cup-stores</p>
+            <table className="gov-table">
+              <thead>
+                <tr>
+                  <th>排名</th>
+                  <th>商家</th>
+                  <th>地區</th>
+                  <th>借出</th>
+                  <th>回收率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topStores.map((item) => (
+                  <tr key={item.storeId}>
+                    <td>{item.rank}</td>
+                    <td>{item.storeName}</td>
+                    <td>{item.region}</td>
+                    <td>{item.issuedCount}</td>
+                    <td>{formatPercent(item.recoveryRate)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </article>
+
+          <article className="gov-card gov-card-store" id="特定店家查詢">
+            <div className="gov-card-title">
+              <h2>特定店家查詢</h2>
+              <i className="fa-solid fa-store" aria-hidden="true" />
+            </div>
+            <p className="gov-endpoint">GET /government/web/stores/&lbrace;storeId&rbrace;</p>
+            <div className="gov-search">
+              <input
+                inputMode="numeric"
+                placeholder="輸入 storeId"
+                value={dashboard.selectedStoreId}
+                onChange={(event) => onChangeStoreId(event.target.value)}
+              />
+              <button type="button" onClick={onSearchStore}>查詢</button>
+            </div>
+            {storeDetail ? (
+              <dl className="gov-store-detail">
+                <div>
+                  <dt>店名</dt>
+                  <dd>{storeDetail.store.name}</dd>
+                </div>
+                <div>
+                  <dt>地區</dt>
+                  <dd>{storeDetail.store.region}</dd>
+                </div>
+                <div>
+                  <dt>借出</dt>
+                  <dd>{storeDetail.issuedCount}</dd>
+                </div>
+                <div>
+                  <dt>回收</dt>
+                  <dd>{storeDetail.returnedCount}</dd>
+                </div>
+                <div>
+                  <dt>實際掃回</dt>
+                  <dd>{storeDetail.recoveredCount}</dd>
+                </div>
+                <div>
+                  <dt>跨店回收</dt>
+                  <dd>{storeDetail.crossStoreRecoveredCount}</dd>
+                </div>
+              </dl>
+            ) : (
+              <p>輸入 storeId 後可查看特定店家狀況。</p>
+            )}
+          </article>
+        </div>
+      </section>
+    </main>
   );
 }
 

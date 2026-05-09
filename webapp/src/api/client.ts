@@ -35,6 +35,95 @@ export type GovernmentAuthResponse = {
   };
 };
 
+export type GovernmentMonthParams = {
+  year?: number;
+  month?: number;
+};
+
+export type GovernmentMonthlyUsageResponse = {
+  month: string;
+  from: string;
+  to: string;
+  issuedCount: number;
+  returnedCount: number;
+  remainingCount: number;
+  recoveryRate: number;
+  activeInvoiceCount: number;
+  partialReturnedInvoiceCount: number;
+  returnedInvoiceCount: number;
+  overdueCount: number;
+  abnormalCount: number;
+  daily: Array<{
+    statDate: string;
+    issuedCount: number;
+    returnedCount: number;
+  }>;
+};
+
+export type GovernmentEnterpriseCountsResponse = {
+  month: string;
+  from: string;
+  to: string;
+  monthJoinedCount: number;
+  totalEnterpriseCount: number;
+};
+
+export type GovernmentRegionDistributionResponse = {
+  totalEnterpriseCount: number;
+  regions: Array<{
+    region: string;
+    enterpriseCount: number;
+  }>;
+};
+
+export type GovernmentTopCupStoresParams = GovernmentMonthParams & {
+  limit?: number;
+};
+
+export type GovernmentTopCupStoresResponse = {
+  month: string;
+  from: string;
+  to: string;
+  category: 'cup';
+  rankings: Array<{
+    rank: number;
+    storeId: number;
+    storeCode: string;
+    storeName: string;
+    region: string;
+    issuedCount: number;
+    returnedCount: number;
+    remainingCount: number;
+    recoveryRate: number;
+  }>;
+};
+
+export type GovernmentStoreDetailResponse = {
+  month: string;
+  from: string;
+  to: string;
+  store: {
+    id: number;
+    code: string;
+    name: string;
+    region: string;
+    createdAt: string;
+  };
+  issuedCount: number;
+  returnedCount: number;
+  recoveredCount: number;
+  remainingCount: number;
+  recoveryRate: number;
+  cupIssuedCount: number;
+  cupReturnedCount: number;
+  mealBoxIssuedCount: number;
+  mealBoxReturnedCount: number;
+  overdueCount: number;
+  abnormalCount: number;
+  crossStoreRecoveredCount: number;
+  lastActivityAt: string;
+};
+
 export type RentalRequest = {
   qrCode: string;
   cupCount: number;
@@ -87,7 +176,7 @@ export type MerchantReturnScanResponse = {
 };
 
 export type MerchantStatsParams = {
-  storeName: string;
+  storeId: number;
   from: string;
   to: string;
 };
@@ -97,15 +186,13 @@ export type MerchantStatsCategoryCount = {
   count: number;
 };
 
-export type MerchantBaseStatsRow = {
+export type MerchantSoldStatsRow = {
   statDate: string;
   totalCount: number;
   categoryCounts: MerchantStatsCategoryCount[];
 };
 
-export type MerchantSoldStatsRow = MerchantBaseStatsRow;
-
-export type MerchantRecoveredStatsRow = MerchantBaseStatsRow & {
+export type MerchantRecoveredStatsRow = MerchantSoldStatsRow & {
   normalCount: number;
   expiredCount: number;
   abnormalCount: number;
@@ -113,15 +200,14 @@ export type MerchantRecoveredStatsRow = MerchantBaseStatsRow & {
 };
 
 export type MerchantSoldStatsResponse = {
-  storeName: string;
+  storeId: number;
   from: string;
   to: string;
-  remainingCount: number;
   rows: MerchantSoldStatsRow[];
 };
 
 export type MerchantRecoveredStatsResponse = {
-  storeName: string;
+  storeId: number;
   from: string;
   to: string;
   rows: MerchantRecoveredStatsRow[];
@@ -129,12 +215,49 @@ export type MerchantRecoveredStatsResponse = {
 
 function buildStatsPath(path: string, params: MerchantStatsParams) {
   const search = new URLSearchParams({
-    storeName: params.storeName,
+    storeId: String(params.storeId),
     from: params.from,
     to: params.to,
   });
 
   return `${path}?${search.toString()}`;
+}
+
+function buildGovernmentMonthPath(path: string, params: GovernmentMonthParams = {}) {
+  const search = new URLSearchParams();
+
+  if (params.year !== undefined) {
+    search.set('year', String(params.year));
+  }
+
+  if (params.month !== undefined) {
+    search.set('month', String(params.month));
+  }
+
+  const query = search.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+function buildGovernmentTopStoresPath(
+  path: string,
+  params: GovernmentTopCupStoresParams = {},
+) {
+  const search = new URLSearchParams();
+
+  if (params.year !== undefined) {
+    search.set('year', String(params.year));
+  }
+
+  if (params.month !== undefined) {
+    search.set('month', String(params.month));
+  }
+
+  if (params.limit !== undefined) {
+    search.set('limit', String(params.limit));
+  }
+
+  const query = search.toString();
+  return query ? `${path}?${query}` : path;
 }
 
 export type ApiUser = {
@@ -176,6 +299,50 @@ export const api = {
           method: 'POST',
           body,
         }),
+    },
+    web: {
+      monthlyUsage: (accessToken: string, params?: GovernmentMonthParams) =>
+        apiRequest<GovernmentMonthlyUsageResponse>(
+          buildGovernmentMonthPath('/government/web/monthly-usage', params),
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+        ),
+      enterpriseCounts: (accessToken: string, params?: GovernmentMonthParams) =>
+        apiRequest<GovernmentEnterpriseCountsResponse>(
+          buildGovernmentMonthPath('/government/web/enterprise-counts', params),
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+        ),
+      regionDistribution: (accessToken: string) =>
+        apiRequest<GovernmentRegionDistributionResponse>('/government/web/region-distribution', {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }),
+      topCupStores: (accessToken: string, params?: GovernmentTopCupStoresParams) =>
+        apiRequest<GovernmentTopCupStoresResponse>(
+          buildGovernmentTopStoresPath('/government/web/top-cup-stores', params),
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+        ),
+      storeDetail: (storeId: number, accessToken: string, params?: GovernmentMonthParams) =>
+        apiRequest<GovernmentStoreDetailResponse>(
+          buildGovernmentMonthPath(`/government/web/stores/${storeId}`, params),
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+        ),
     },
   },
   rentals: {
