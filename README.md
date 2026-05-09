@@ -36,6 +36,8 @@ Default database path: `data/reusable_container.db`.
 - `POST /government/auth/login`
 - `GET /government/overview`
 - `GET /government/stores`
+- `GET /government/daily/sold`
+- `GET /government/daily/recovered`
 - `GET /government/invoices`
 - `GET /government/invoices/{loanId}`
 - `GET /government/anomalies`

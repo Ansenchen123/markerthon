@@ -1,6 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.daily_stats import rebuild_daily_stats
 from app.database import SessionLocal
 from app.init_db import init_db
 from app.models import GovernmentUser, MerchantUser, Store
@@ -62,6 +63,7 @@ def seed_demo_data(db: Session) -> None:
         if user is None:
             db.add(GovernmentUser(username=user_email, user_email=user_email, password_hash=hash_password(password)))
     db.commit()
+    rebuild_daily_stats(db)
 
 
 def main() -> None:

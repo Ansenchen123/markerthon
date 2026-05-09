@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.daily_stats import record_daily_recovered, record_daily_sold
 from app.models import Loan, MerchantUser, RefundLedger, ScanEvent
 from app.schemas import (
     ContainerType,
@@ -75,6 +76,13 @@ def create_qr_code(
         if loan.status == "returned":
             loan.status = "partial_returned"
 
+    record_daily_sold(
+        db,
+        store_id=current_user.store_id,
+        container_type=ContainerType.cup.value,
+        count=payload.cup_count,
+        occurred_at=issued_at,
+    )
     db.commit()
     db.refresh(loan)
 
@@ -172,6 +180,17 @@ def scan_return(
             note=payload.note,
             created_at=scanned_at,
         )
+    )
+    record_daily_recovered(
+        db,
+        store_id=current_user.store_id,
+        container_type=loan.container_type,
+        count=return_count,
+        is_normal=not is_expired and not is_abnormal,
+        is_expired=is_expired,
+        is_abnormal=is_abnormal,
+        is_cross_store=loan.issued_store_id != current_user.store_id,
+        occurred_at=scanned_at,
     )
     db.commit()
     db.refresh(loan)

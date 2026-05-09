@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import Loan, RefundLedger, ScanEvent
+from app.models import DailyRecoveredStats, DailySoldStats, Loan, RefundLedger, ScanEvent
 from app.seed import seed_demo_data
 from app.time_utils import now_taipei
 from app.views import create_sqlite_views
@@ -80,6 +80,11 @@ def stats_range() -> dict[str, str]:
         "from": (now - timedelta(days=1)).isoformat(),
         "to": (now + timedelta(days=1)).isoformat(),
     }
+
+
+def daily_stats_range() -> dict[str, str]:
+    today = now_taipei().date().isoformat()
+    return {"from": today, "to": today}
 
 
 def test_login_success_and_failure(context):
@@ -200,7 +205,7 @@ def test_create_qr_code_uses_cup_count_without_exposing_amounts(context):
 
 
 def test_invoice_qr_is_reused_and_count_accumulates_per_store(context):
-    client, _ = context
+    client, SessionLocal = context
     tea_headers = login_headers(client, "tea.owner@example.com")
     bento_headers = login_headers(client, "bento.owner@example.com")
 
@@ -219,6 +224,24 @@ def test_invoice_qr_is_reused_and_count_accumulates_per_store(context):
     assert other_invoice["qrValue"] == "OTHER-INVOICE|tea-shop"
     assert other_store["totalCupCount"] == 1
     assert other_store["qrValue"] == "SAME-INVOICE|bento-shop"
+
+    with SessionLocal() as db:
+        tea_daily = db.scalar(
+            select(DailySoldStats).where(
+                DailySoldStats.store_id == 1,
+                DailySoldStats.container_type == "cup",
+                DailySoldStats.stat_date == now_taipei().date(),
+            )
+        )
+        bento_daily = db.scalar(
+            select(DailySoldStats).where(
+                DailySoldStats.store_id == 2,
+                DailySoldStats.container_type == "cup",
+                DailySoldStats.stat_date == now_taipei().date(),
+            )
+        )
+        assert tea_daily.sold_count == 6
+        assert bento_daily.sold_count == 1
 
 
 def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
@@ -245,6 +268,16 @@ def test_normal_return_creates_full_refund_and_rejects_duplicate_scan(context):
         assert loan.returned_store_id != loan.issued_store_id
         ledger = db.scalar(select(RefundLedger).where(RefundLedger.loan_id == loan.id))
         assert ledger.refund_amount == 20
+        daily_recovered = db.scalar(
+            select(DailyRecoveredStats).where(
+                DailyRecoveredStats.store_id == loan.returned_store_id,
+                DailyRecoveredStats.container_type == "cup",
+                DailyRecoveredStats.stat_date == now_taipei().date(),
+            )
+        )
+        assert daily_recovered.recovered_count == 1
+        assert daily_recovered.normal_count == 1
+        assert daily_recovered.cross_store_count == 1
 
     duplicate = client.post(
         "/merchant/returns/scan",
@@ -409,6 +442,15 @@ def test_government_views_expose_overview_store_stats_and_abnormal_events(contex
         assert abnormal["reason"] == "polluted"
         assert abnormal["note"] == "sticky residue"
 
+        daily_sold = db.execute(text("SELECT sold_count FROM v_daily_sold_stats WHERE store_code = 'tea-shop'")).mappings().one()
+        assert daily_sold["sold_count"] == 1
+
+        daily_recovered = db.execute(
+            text("SELECT recovered_count, abnormal_count FROM v_daily_recovered_stats WHERE store_code = 'tea-shop'")
+        ).mappings().one()
+        assert daily_recovered["recovered_count"] == 1
+        assert daily_recovered["abnormal_count"] == 1
+
 
 def test_government_read_only_apis_cover_overview_stores_invoices_and_anomalies(context):
     client, _ = context
@@ -445,6 +487,18 @@ def test_government_read_only_apis_cover_overview_stores_invoices_and_anomalies(
     assert tea_store["issuedCupCount"] == 2
     assert bento_store["returnedCupCount"] == 1
     assert bento_store["crossStoreReturnedCount"] == 1
+
+    daily_sold = client.get("/government/daily/sold", headers=gov_headers, params=daily_stats_range())
+    assert daily_sold.status_code == 200
+    tea_daily_sold = next(row for row in daily_sold.json()["rows"] if row["storeCode"] == "tea-shop")
+    assert tea_daily_sold["soldCount"] == 2
+
+    daily_recovered = client.get("/government/daily/recovered", headers=gov_headers, params=daily_stats_range())
+    assert daily_recovered.status_code == 200
+    bento_daily_recovered = next(row for row in daily_recovered.json()["rows"] if row["storeCode"] == "bento-shop")
+    assert bento_daily_recovered["recoveredCount"] == 1
+    assert bento_daily_recovered["normalCount"] == 1
+    assert bento_daily_recovered["crossStoreCount"] == 1
 
     invoices = client.get("/government/invoices", headers=gov_headers, params=params)
     assert invoices.status_code == 200

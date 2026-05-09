@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 import re
 from typing import Optional
@@ -242,3 +242,37 @@ class GovernmentAnomaliesResponse(APIModel):
     from_at: datetime = Field(alias="from")
     to_at: datetime = Field(alias="to")
     anomalies: list[GovernmentAnomalyResponse]
+
+
+class GovernmentDailySoldStatsRow(APIModel):
+    stat_date: date = Field(alias="statDate")
+    store_id: int = Field(alias="storeId")
+    store_code: str = Field(alias="storeCode")
+    store_name: str = Field(alias="storeName")
+    container_type: ContainerType = Field(alias="containerType")
+    sold_count: int = Field(alias="soldCount")
+
+
+class GovernmentDailySoldStatsResponse(APIModel):
+    from_date: date = Field(alias="from")
+    to_date: date = Field(alias="to")
+    rows: list[GovernmentDailySoldStatsRow]
+
+
+class GovernmentDailyRecoveredStatsRow(APIModel):
+    stat_date: date = Field(alias="statDate")
+    store_id: int = Field(alias="storeId")
+    store_code: str = Field(alias="storeCode")
+    store_name: str = Field(alias="storeName")
+    container_type: ContainerType = Field(alias="containerType")
+    recovered_count: int = Field(alias="recoveredCount")
+    normal_count: int = Field(alias="normalCount")
+    expired_count: int = Field(alias="expiredCount")
+    abnormal_count: int = Field(alias="abnormalCount")
+    cross_store_count: int = Field(alias="crossStoreCount")
+
+
+class GovernmentDailyRecoveredStatsResponse(APIModel):
+    from_date: date = Field(alias="from")
+    to_date: date = Field(alias="to")
+    rows: list[GovernmentDailyRecoveredStatsRow]

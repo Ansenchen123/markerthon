@@ -479,6 +479,74 @@ Response `200`:
 }
 ```
 
+### GET `/government/daily/sold`
+
+每日賣出彙總，讀 `daily_sold_stats`。每一天、每店、每容器類型一列。
+
+Query params:
+
+| Name | Required | Example |
+|---|---|---|
+| `from` | yes | `2026-05-09` |
+| `to` | yes | `2026-05-09` |
+| `storeId` | no | `1` |
+| `containerType` | no | `cup` |
+
+Response `200`:
+
+```json
+{
+  "from": "2026-05-09",
+  "to": "2026-05-09",
+  "rows": [
+    {
+      "statDate": "2026-05-09",
+      "storeId": 1,
+      "storeCode": "tea-shop",
+      "storeName": "青山茶飲",
+      "containerType": "cup",
+      "soldCount": 10
+    }
+  ]
+}
+```
+
+### GET `/government/daily/recovered`
+
+每日回收彙總，讀 `daily_recovered_stats`。每一次成功掃碼回收都會把當天回收數加一。
+
+Query params:
+
+| Name | Required | Example |
+|---|---|---|
+| `from` | yes | `2026-05-09` |
+| `to` | yes | `2026-05-09` |
+| `storeId` | no | `2` |
+| `containerType` | no | `cup` |
+
+Response `200`:
+
+```json
+{
+  "from": "2026-05-09",
+  "to": "2026-05-09",
+  "rows": [
+    {
+      "statDate": "2026-05-09",
+      "storeId": 2,
+      "storeCode": "bento-shop",
+      "storeName": "晨光便當",
+      "containerType": "cup",
+      "recoveredCount": 6,
+      "normalCount": 5,
+      "expiredCount": 1,
+      "abnormalCount": 1,
+      "crossStoreCount": 2
+    }
+  ]
+}
+```
+
 ### GET `/government/invoices`
 
 查發票批次列表。
@@ -641,10 +709,27 @@ SELECT * FROM v_store_stats;
 SELECT * FROM v_abnormal_events ORDER BY created_at DESC;
 ```
 
+### `v_daily_sold_stats`
+
+每日賣出彙總，來自 `daily_sold_stats`，含店家代號與店名，方便政府端 web 直接做日報表。
+
+```sql
+SELECT * FROM v_daily_sold_stats ORDER BY stat_date, store_code;
+```
+
+### `v_daily_recovered_stats`
+
+每日回收彙總，來自 `daily_recovered_stats`，含正常、逾期、異常、跨店回收分項。
+
+```sql
+SELECT * FROM v_daily_recovered_stats ORDER BY stat_date, store_code;
+```
+
 ## Notes
 
 - 時間以 `Asia/Taipei` 計算 3 天歸還期限，SQLite 內存 naive datetime。
 - `qrValue` 使用 `發票代號|商家代號`；同一店家同一張發票只有一個 QR。
 - DB 保存 `cup_count`、`returned_count` 與 SHA-256 `qr_token_hash`，不保存明文 `qrValue`。
+- DB 另存 `daily_sold_stats` 與 `daily_recovered_stats`，每天每店每類型一列，用於政府端日統計。
 - 第一版不串真實金流，只保存 `refund_ledgers` 作為後端退押帳本。
 - 第一版不追蹤單一實體容器 ID。

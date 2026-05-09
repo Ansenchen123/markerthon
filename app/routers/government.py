@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -6,10 +6,15 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import GovernmentUser, Loan, ScanEvent, Store
+from app.models import DailyRecoveredStats, DailySoldStats, GovernmentUser, Loan, ScanEvent, Store
 from app.schemas import (
+    ContainerType,
     GovernmentAnomaliesResponse,
     GovernmentAnomalyResponse,
+    GovernmentDailyRecoveredStatsResponse,
+    GovernmentDailyRecoveredStatsRow,
+    GovernmentDailySoldStatsResponse,
+    GovernmentDailySoldStatsRow,
     GovernmentInvoiceDetailResponse,
     GovernmentInvoicesResponse,
     GovernmentInvoiceSummary,
@@ -297,3 +302,83 @@ def get_government_anomalies(
         )
 
     return GovernmentAnomaliesResponse(**{"from": from_at, "to": to_at}, anomalies=anomalies)
+
+
+@router.get("/daily/sold", response_model=GovernmentDailySoldStatsResponse)
+def get_government_daily_sold_stats(
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
+    store_id: Optional[int] = Query(default=None, alias="storeId"),
+    container_type: Optional[ContainerType] = Query(default=None, alias="containerType"),
+    db: Session = Depends(get_db),
+    _: GovernmentUser = Depends(get_current_government_user),
+) -> GovernmentDailySoldStatsResponse:
+    statement = select(DailySoldStats).where(
+        DailySoldStats.stat_date >= from_date,
+        DailySoldStats.stat_date <= to_date,
+    )
+    if store_id is not None:
+        statement = statement.where(DailySoldStats.store_id == store_id)
+    if container_type is not None:
+        statement = statement.where(DailySoldStats.container_type == container_type.value)
+    statement = statement.order_by(DailySoldStats.stat_date, DailySoldStats.store_id, DailySoldStats.container_type)
+    rows = list(db.scalars(statement))
+
+    return GovernmentDailySoldStatsResponse(
+        **{"from": from_date, "to": to_date},
+        rows=[
+            GovernmentDailySoldStatsRow(
+                statDate=row.stat_date,
+                storeId=row.store_id,
+                storeCode=row.store.code,
+                storeName=row.store.name,
+                containerType=row.container_type,
+                soldCount=row.sold_count,
+            )
+            for row in rows
+        ],
+    )
+
+
+@router.get("/daily/recovered", response_model=GovernmentDailyRecoveredStatsResponse)
+def get_government_daily_recovered_stats(
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
+    store_id: Optional[int] = Query(default=None, alias="storeId"),
+    container_type: Optional[ContainerType] = Query(default=None, alias="containerType"),
+    db: Session = Depends(get_db),
+    _: GovernmentUser = Depends(get_current_government_user),
+) -> GovernmentDailyRecoveredStatsResponse:
+    statement = select(DailyRecoveredStats).where(
+        DailyRecoveredStats.stat_date >= from_date,
+        DailyRecoveredStats.stat_date <= to_date,
+    )
+    if store_id is not None:
+        statement = statement.where(DailyRecoveredStats.store_id == store_id)
+    if container_type is not None:
+        statement = statement.where(DailyRecoveredStats.container_type == container_type.value)
+    statement = statement.order_by(
+        DailyRecoveredStats.stat_date,
+        DailyRecoveredStats.store_id,
+        DailyRecoveredStats.container_type,
+    )
+    rows = list(db.scalars(statement))
+
+    return GovernmentDailyRecoveredStatsResponse(
+        **{"from": from_date, "to": to_date},
+        rows=[
+            GovernmentDailyRecoveredStatsRow(
+                statDate=row.stat_date,
+                storeId=row.store_id,
+                storeCode=row.store.code,
+                storeName=row.store.name,
+                containerType=row.container_type,
+                recoveredCount=row.recovered_count,
+                normalCount=row.normal_count,
+                expiredCount=row.expired_count,
+                abnormalCount=row.abnormal_count,
+                crossStoreCount=row.cross_store_count,
+            )
+            for row in rows
+        ],
+    )
