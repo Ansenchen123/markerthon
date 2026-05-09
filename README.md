@@ -31,3 +31,5 @@ uvicorn app.main:app --reload
 ```
 
 API 與後端細節請看 [backend/API_USAGE.md](backend/API_USAGE.md) 與 [backend/README.md](backend/README.md)。
+
+全端測試方法請看 [E2E_TESTING.md](E2E_TESTING.md)。之後要求「全端測試」時，應依此文件調用 subagents 扮演商家與政府端使用者。
