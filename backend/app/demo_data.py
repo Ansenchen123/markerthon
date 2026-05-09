@@ -179,14 +179,13 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
     if invalid.status_code != 404:
         raise RuntimeError(f"Expected invalid QR status 404, got {invalid.status_code}: {invalid.text}")
 
-    from_param = start_date.isoformat()
-    to_param = today.isoformat()
-    sold = _request_json(
-        client.get("/government/daily/sold", headers=government_headers, params={"from": from_param, "to": to_param}),
+    month_query = {"year": str(today.year), "month": str(today.month)}
+    monthly_usage = _request_json(
+        client.get("/government/web/monthly-usage", headers=government_headers, params=month_query),
         200,
     )
-    recovered = _request_json(
-        client.get("/government/daily/recovered", headers=government_headers, params={"from": from_param, "to": to_param}),
+    top_cup_stores = _request_json(
+        client.get("/government/web/top-cup-stores", headers=government_headers, params=month_query),
         200,
     )
     merchant_sold = _request_json(
@@ -206,8 +205,9 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
         "startDate": start_date,
         "endDate": today,
         "createdBatches": len(created_batches),
-        "soldRows": sold["rows"],
-        "recoveredRows": recovered["rows"],
+        "monthlyIssuedCount": monthly_usage["issuedCount"],
+        "monthlyReturnedCount": monthly_usage["returnedCount"],
+        "topCupStoreRows": len(top_cup_stores["rankings"]),
         "teaMerchantSold": sum(row["totalCount"] for row in merchant_sold["rows"]),
     }
 
@@ -233,6 +233,9 @@ def main() -> None:
     print(f"Created invoice batches through API: {result['createdBatches']}")
     print(f"Daily sold summary rows: {len(sold_summary)}")
     print(f"Daily recovered summary rows: {len(recovered_summary)}")
+    print(f"Government monthly issued count from API: {result['monthlyIssuedCount']}")
+    print(f"Government monthly returned count from API: {result['monthlyReturnedCount']}")
+    print(f"Government cup ranking rows from API: {result['topCupStoreRows']}")
     print(f"Tea merchant sold count from API: {result['teaMerchantSold']}")
     print("CSV reports:")
     for path in report_paths:

@@ -61,9 +61,10 @@ curl -s http://127.0.0.1:8013/health
 任務範圍：
 
 - 登入 demo 政府帳號。
-- 查詢 `overview`、`stores`、`daily sold`、`daily recovered`、`invoices`、`invoice detail`、`anomalies`。
-- 使用覆蓋當日的日期區間。
-- 測試 `storeId`、`category`、`type` 等 filter。
+- 查詢 `monthly-usage`、`enterprise-counts`、`region-distribution`、`top-cup-stores`、`stores/{storeId}`。
+- 使用覆蓋當月的 `year`、`month`。
+- 測試 `limit` 與不存在的 `storeId`。
+- 確認舊政府查詢 API 已移除：`/government/overview`、`/government/stores`、`/government/daily/*`、`/government/invoices*`、`/government/anomalies` 都應回 `404`。
 - 等商家 subagent 寫入資料後重查一次，確認資料有反映。
 
 政府 subagent 最終回報：
@@ -96,7 +97,7 @@ curl -s http://127.0.0.1:8013/health
   - `remainingCount`
 - API 聚合結果：
   - 商家 stats。
-  - 政府 overview/stores/daily/invoices/anomalies。
+  - 政府 web monthly usage、enterprise counts、region distribution、top cup stores、store status。
 
 ## 必查不變條件
 
@@ -109,7 +110,7 @@ curl -s http://127.0.0.1:8013/health
 - 已全數回收的 QR 再掃描應回 `409`，並寫入 `scan_events.result=duplicate_scan`。
 - 無效 QR 應回 `404`，並寫入 `scan_events.result=invalid_qr`。
 - 商家 stats 的 `storeId` 必須和登入 token 所屬店家一致，否則回 `403`。
-- 政府端 filter 名稱應使用 `storeId`、`category`，不可混成 `store_id` 或舊欄位。
+- 政府端 web API 應只保留 `/government/web/...` 查詢路徑，不可讓舊 `/government/overview`、`/government/stores`、`/government/daily/*`、`/government/invoices*`、`/government/anomalies` 混入文件或 OpenAPI。
 - 公開 API 與文件不得回到 `cup_count`、`cupCount`、`containerType` 等舊命名。
 
 ## 結果報告格式

@@ -209,12 +209,12 @@ def test_government_login_and_role_isolation(context):
     client, _ = context
     gov_headers = government_headers(client)
     merchant_headers = login_headers(client)
-    params = stats_range()
+    params = month_params()
 
-    overview = client.get("/government/overview", headers=gov_headers, params=params)
-    assert overview.status_code == 200
+    monthly_usage = client.get("/government/web/monthly-usage", headers=gov_headers, params=params)
+    assert monthly_usage.status_code == 200
 
-    merchant_on_government = client.get("/government/overview", headers=merchant_headers, params=params)
+    merchant_on_government = client.get("/government/web/monthly-usage", headers=merchant_headers, params=params)
     assert merchant_on_government.status_code == 403
 
     government_on_merchant = client.get("/merchant/stats/sold", headers=gov_headers, params=merchant_stats_range(1))
@@ -233,8 +233,8 @@ def test_government_register_creates_user_and_token(context):
     assert response.json()["user"]["userEmail"] == "new.gov@example.com"
     headers = {"Authorization": f"Bearer {response.json()['accessToken']}"}
 
-    overview = client.get("/government/overview", headers=headers, params=stats_range())
-    assert overview.status_code == 200
+    monthly_usage = client.get("/government/web/monthly-usage", headers=headers, params=month_params())
+    assert monthly_usage.status_code == 200
 
     duplicate = client.post(
         "/government/auth/register",
@@ -585,71 +585,22 @@ def test_government_views_expose_overview_store_stats_and_abnormal_events(contex
     )
 
 
-def test_government_read_only_apis_cover_overview_stores_invoices_and_anomalies(context):
+def test_legacy_government_read_only_apis_are_removed(context):
     client, _ = context
-    tea_headers = login_headers(client, "tea.owner@example.com")
-    bento_headers = login_headers(client, "bento.owner@example.com")
     gov_headers = government_headers(client)
+    legacy_endpoints = [
+        ("/government/overview", stats_range()),
+        ("/government/stores", stats_range()),
+        ("/government/daily/sold", daily_stats_range()),
+        ("/government/daily/recovered", daily_stats_range()),
+        ("/government/invoices", stats_range()),
+        ("/government/invoices/1", {}),
+        ("/government/anomalies", stats_range()),
+    ]
 
-    qr = create_qr_batch(client, tea_headers, "GOV-001", item_count=2)
-    client.post(
-        "/merchant/returns/scan",
-        headers=bento_headers,
-        json={"qrValue": qr["qrValue"]},
-    )
-    duplicate = client.post(
-        "/merchant/returns/scan",
-        headers=bento_headers,
-        json={"qrValue": "bad-government-token"},
-    )
-    assert duplicate.status_code == 404
-
-    params = stats_range()
-    overview = client.get("/government/overview", headers=gov_headers, params=params)
-    assert overview.status_code == 200
-    assert overview.json()["issuedCount"] == 2
-    assert overview.json()["returnedCount"] == 1
-    assert overview.json()["remainingCount"] == 1
-    assert overview.json()["partialReturnedInvoiceCount"] == 1
-    assert "depositTotal" not in overview.json()
-
-    stores = client.get("/government/stores", headers=gov_headers, params=params)
-    assert stores.status_code == 200
-    tea_store = next(store for store in stores.json()["stores"] if store["storeCode"] == "tea-shop")
-    bento_store = next(store for store in stores.json()["stores"] if store["storeCode"] == "bento-shop")
-    assert tea_store["issuedCount"] == 2
-    assert bento_store["returnedCount"] == 1
-    assert bento_store["crossStoreCount"] == 1
-
-    daily_sold = client.get("/government/daily/sold", headers=gov_headers, params=daily_stats_range())
-    assert daily_sold.status_code == 200
-    tea_daily_sold = next(row for row in daily_sold.json()["rows"] if row["storeCode"] == "tea-shop")
-    assert tea_daily_sold["soldCount"] == 2
-
-    daily_recovered = client.get("/government/daily/recovered", headers=gov_headers, params=daily_stats_range())
-    assert daily_recovered.status_code == 200
-    bento_daily_recovered = next(row for row in daily_recovered.json()["rows"] if row["storeCode"] == "bento-shop")
-    assert bento_daily_recovered["recoveredCount"] == 1
-    assert bento_daily_recovered["normalCount"] == 1
-    assert bento_daily_recovered["crossStoreCount"] == 1
-
-    invoices = client.get("/government/invoices", headers=gov_headers, params=params)
-    assert invoices.status_code == 200
-    invoice = next(item for item in invoices.json()["invoices"] if item["invoiceCode"] == "GOV-001")
-    assert invoice["qrValue"] == "GOV-001|tea-shop|cup"
-    assert invoice["totalCount"] == 2
-    assert invoice["returnedCount"] == 1
-    assert invoice["remainingCount"] == 1
-
-    detail = client.get(f"/government/invoices/{qr['loanId']}", headers=gov_headers)
-    assert detail.status_code == 200
-    assert detail.json()["invoiceCode"] == "GOV-001"
-    assert detail.json()["returnedStoreCode"] == "bento-shop"
-    assert len(detail.json()["scanEvents"]) == 1
-
-    anomalies = client.get("/government/anomalies", headers=gov_headers, params=params)
-    assert anomalies.status_code == 200
-    assert any(item["result"] == "invalid_qr" for item in anomalies.json()["anomalies"])
+    for path, params in legacy_endpoints:
+        response = client.get(path, headers=gov_headers, params=params)
+        assert response.status_code == 404
 
 
 def test_government_web_apis_cover_monthly_dashboard_and_store_status(context):
