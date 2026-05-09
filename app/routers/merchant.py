@@ -63,14 +63,19 @@ def create_qr_code(
             invoice_sequence=1,
             cup_count=payload.cup_count,
             returned_count=0,
-            container_type=ContainerType.cup.value,
-            deposit_amount=DEPOSIT_AMOUNTS[ContainerType.cup],
+            container_type=payload.container_type.value,
+            deposit_amount=DEPOSIT_AMOUNTS[payload.container_type],
             status="active",
             issued_at=issued_at,
             due_at=due_at_from(issued_at),
         )
         db.add(loan)
     else:
+        if loan.container_type != payload.container_type.value:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Invoice already exists with a different container type",
+            )
         loan.qr_token_hash = hash_qr_value(qr_value)
         loan.cup_count += payload.cup_count
         if loan.status == "returned":
@@ -90,6 +95,7 @@ def create_qr_code(
         qrValue=qr_value,
         invoiceCode=payload.invoice_code,
         storeCode=current_user.store.code,
+        containerType=loan.container_type,
         addedCupCount=payload.cup_count,
         totalCupCount=loan.cup_count,
         returnedCount=loan.returned_count,

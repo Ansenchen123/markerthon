@@ -142,7 +142,7 @@ Failure:
 
 ### 1. POST `/merchant/qr-codes`
 
-店家賣出循環杯時呼叫。店家只需要輸入發票號碼與杯數，後端會依「商家 + 發票」找到同一筆發票紀錄並累加 `cupCount`。同一張發票只會有一個 `qrValue`；前端只需要把這個 `qrValue` 生成一張 QR Code 圖。
+店家賣出循環容器時呼叫。店家輸入發票號碼、容器類型與數量，後端會依「商家 + 發票」找到同一筆發票紀錄並累加 `cupCount`。同一張發票只會有一個 `qrValue`；前端只需要把這個 `qrValue` 生成一張 QR Code 圖。
 
 QR 代表本次借出憑證，不代表實體容器 ID。容器本身不綁定識別碼。
 
@@ -165,11 +165,12 @@ Request:
 ```json
 {
   "invoiceCode": "INV-20260509-001",
+  "containerType": "cup",
   "cupCount": 2
 }
 ```
 
-`cupCount` 最小為 `1`，最大為 `100`。押金由後端內部帳本處理，不在商家 API 回傳。
+`containerType` 可為 `cup` 或 `meal_box`。同一店同一發票建立後不可改成另一種容器類型。`cupCount` 最小為 `1`，最大為 `100`。押金由後端內部帳本處理，不在商家 API 回傳。
 
 Response `201`:
 
@@ -179,6 +180,7 @@ Response `201`:
   "qrValue": "INV-20260509-001|tea-shop",
   "invoiceCode": "INV-20260509-001",
   "storeCode": "tea-shop",
+  "containerType": "cup",
   "addedCupCount": 2,
   "totalCupCount": 2,
   "returnedCount": 0,
@@ -192,7 +194,7 @@ DB changes:
 
 | Table | Change |
 |---|---|
-| `loans` | 同店同發票不存在時新增一筆；已存在時更新同一筆 `cup_count += cupCount`，保存 `qr_token_hash`，不保存明文 `qrValue` |
+| `loans` | 同店同發票不存在時新增一筆；已存在時若 `containerType` 相同就更新同一筆 `cup_count += cupCount`，保存 `container_type` 與 `qr_token_hash`，不保存明文 `qrValue` |
 
 ### 2. POST `/merchant/returns/scan`
 
@@ -368,7 +370,7 @@ TOKEN=$(curl -s -X POST http://127.0.0.1:8000/auth/login \
 QR_VALUE=$(curl -s -X POST http://127.0.0.1:8000/merchant/qr-codes \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"invoiceCode":"INV-DEMO-001","cupCount":2}' \
+  -d '{"invoiceCode":"INV-DEMO-001","containerType":"cup","cupCount":2}' \
   | python -c 'import json,sys; print(json.load(sys.stdin)["qrValue"])')
 
 curl -s -X POST http://127.0.0.1:8000/merchant/returns/scan \

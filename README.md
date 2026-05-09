@@ -53,6 +53,6 @@ The QR value returned by `/merchant/qr-codes` is a one-time loan credential form
 
 Example: `INV-20260509-001|tea-shop`.
 
-Each invoice has only one QR code per store. `POST /merchant/qr-codes` accepts `invoiceCode` and `cupCount`; repeated calls for the same store and invoice reuse the same QR value and increase the backend count. Each scan return decreases the backend remaining count by one cup.
+Each invoice has only one QR code per store. `POST /merchant/qr-codes` accepts `invoiceCode`, `containerType`, and `cupCount`; repeated calls for the same store, invoice, and container type reuse the same QR value and increase the backend count. Each scan return decreases the backend remaining count by one cup.
 
 Daily sold and recovered reports are append-only CSV logs. Each successful QR creation appends a `sold` row, and each successful scan return appends a `recovered` row to that day's CSV file.

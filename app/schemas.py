@@ -110,6 +110,7 @@ class GovernmentLoginResponse(APIModel):
 
 class QRCodeCreate(APIModel):
     invoice_code: str = Field(alias="invoiceCode", min_length=1, max_length=80)
+    container_type: ContainerType = Field(alias="containerType")
     cup_count: int = Field(alias="cupCount", ge=1, le=100)
 
 
@@ -118,6 +119,7 @@ class QRCodeResponse(APIModel):
     qr_value: str = Field(alias="qrValue")
     invoice_code: str = Field(alias="invoiceCode")
     store_code: str = Field(alias="storeCode")
+    container_type: ContainerType = Field(alias="containerType")
     added_cup_count: int = Field(alias="addedCupCount")
     total_cup_count: int = Field(alias="totalCupCount")
     returned_count: int = Field(alias="returnedCount")

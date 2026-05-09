@@ -98,7 +98,7 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
                     client.post(
                         "/merchant/qr-codes",
                         headers=merchant_headers[store_key],
-                        json={"invoiceCode": invoice_code, "cupCount": cup_count},
+                        json={"invoiceCode": invoice_code, "containerType": "cup", "cupCount": cup_count},
                     ),
                     201,
                 )
@@ -145,7 +145,7 @@ def create_demo_flow(client: TestClient, *, days: int = 5) -> dict[str, Any]:
             client.post(
                 "/merchant/qr-codes",
                 headers=merchant_headers["tea"],
-                json={"invoiceCode": duplicate_invoice, "cupCount": 1},
+                json={"invoiceCode": duplicate_invoice, "containerType": "cup", "cupCount": 1},
             ),
             201,
         )

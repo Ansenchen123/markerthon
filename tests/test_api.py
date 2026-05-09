@@ -62,11 +62,17 @@ def government_headers(client: TestClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {response.json()['accessToken']}"}
 
 
-def create_qr_batch(client: TestClient, headers: dict[str, str], invoice: str = "INV-001", cup_count: int = 1) -> dict:
+def create_qr_batch(
+    client: TestClient,
+    headers: dict[str, str],
+    invoice: str = "INV-001",
+    cup_count: int = 1,
+    container_type: str = "cup",
+) -> dict:
     response = client.post(
         "/merchant/qr-codes",
         headers=headers,
-        json={"invoiceCode": invoice, "cupCount": cup_count},
+        json={"invoiceCode": invoice, "containerType": container_type, "cupCount": cup_count},
     )
     assert response.status_code == 201
     return response.json()
@@ -148,7 +154,7 @@ def test_merchant_register_creates_store_user_and_token(context):
     qr = client.post(
         "/merchant/qr-codes",
         headers=headers,
-        json={"invoiceCode": "NEW-001", "cupCount": 1},
+        json={"invoiceCode": "NEW-001", "containerType": "cup", "cupCount": 1},
     )
     assert qr.status_code == 201
     assert qr.json()["qrValue"] == f"NEW-001|{response.json()['store']['code']}"
@@ -221,6 +227,7 @@ def test_create_qr_code_uses_cup_count_without_exposing_amounts(context):
 
     assert batch["invoiceCode"] == "CUP-001"
     assert batch["storeCode"] == "tea-shop"
+    assert batch["containerType"] == "cup"
     assert batch["addedCupCount"] == 3
     assert batch["totalCupCount"] == 3
     assert batch["returnedCount"] == 0
@@ -228,6 +235,37 @@ def test_create_qr_code_uses_cup_count_without_exposing_amounts(context):
     assert "totalDepositAmount" not in batch
     assert "depositAmount" not in batch
     assert batch["qrValue"] == "CUP-001|tea-shop"
+
+
+def test_create_qr_code_records_container_type_and_rejects_type_mismatch(context):
+    client, _ = context
+    headers = login_headers(client)
+
+    meal_box_batch = create_qr_batch(
+        client,
+        headers,
+        invoice="MEAL-BOX-001",
+        cup_count=2,
+        container_type="meal_box",
+    )
+    assert meal_box_batch["containerType"] == "meal_box"
+
+    append_same_type = create_qr_batch(
+        client,
+        headers,
+        invoice="MEAL-BOX-001",
+        cup_count=1,
+        container_type="meal_box",
+    )
+    assert append_same_type["totalCupCount"] == 3
+    assert append_same_type["containerType"] == "meal_box"
+
+    mismatch = client.post(
+        "/merchant/qr-codes",
+        headers=headers,
+        json={"invoiceCode": "MEAL-BOX-001", "containerType": "cup", "cupCount": 1},
+    )
+    assert mismatch.status_code == 409
 
 
 def test_invoice_qr_is_reused_and_count_accumulates_per_store(context):
