@@ -25,11 +25,13 @@ Default database path: `data/reusable_container.db`.
 
 ## Main Merchant APIs
 
+- `POST /auth/register`
 - `POST /auth/login`
 - `POST /merchant/qr-codes`
 - `POST /merchant/returns/scan`
 - `GET /merchant/stats/sold`
 - `GET /merchant/stats/recovered`
+- `POST /government/auth/register`
 - `POST /government/auth/login`
 - `GET /government/overview`
 - `GET /government/stores`

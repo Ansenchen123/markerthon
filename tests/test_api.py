@@ -94,6 +94,54 @@ def test_login_success_and_failure(context):
     assert failure.status_code == 401
 
 
+def test_merchant_register_creates_store_user_and_token(context):
+    client, _ = context
+
+    response = client.post(
+        "/auth/register",
+        json={
+            "username": "new_merchant",
+            "password": "password123",
+            "storeCode": "new-shop",
+            "storeName": "新店家",
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["accessToken"]
+    assert response.json()["store"]["code"] == "new-shop"
+    headers = {"Authorization": f"Bearer {response.json()['accessToken']}"}
+
+    qr = client.post(
+        "/merchant/qr-codes",
+        headers=headers,
+        json={"invoiceCode": "NEW-001", "cupCount": 1},
+    )
+    assert qr.status_code == 201
+    assert qr.json()["qrValue"] == "NEW-001|new-shop"
+
+    duplicate_user = client.post(
+        "/auth/register",
+        json={
+            "username": "new_merchant",
+            "password": "password123",
+            "storeCode": "another-new-shop",
+            "storeName": "另一新店",
+        },
+    )
+    assert duplicate_user.status_code == 409
+
+    duplicate_store = client.post(
+        "/auth/register",
+        json={
+            "username": "another_merchant",
+            "password": "password123",
+            "storeCode": "new-shop",
+            "storeName": "新店家",
+        },
+    )
+    assert duplicate_store.status_code == 409
+
+
 def test_government_login_and_role_isolation(context):
     client, _ = context
     gov_headers = government_headers(client)
@@ -108,6 +156,28 @@ def test_government_login_and_role_isolation(context):
 
     government_on_merchant = client.get("/merchant/stats/sold", headers=gov_headers, params=params)
     assert government_on_merchant.status_code == 403
+
+
+def test_government_register_creates_user_and_token(context):
+    client, _ = context
+
+    response = client.post(
+        "/government/auth/register",
+        json={"username": "new_gov", "password": "password123"},
+    )
+    assert response.status_code == 201
+    assert response.json()["accessToken"]
+    assert response.json()["user"]["username"] == "new_gov"
+    headers = {"Authorization": f"Bearer {response.json()['accessToken']}"}
+
+    overview = client.get("/government/overview", headers=headers, params=stats_range())
+    assert overview.status_code == 200
+
+    duplicate = client.post(
+        "/government/auth/register",
+        json={"username": "new_gov", "password": "password123"},
+    )
+    assert duplicate.status_code == 409
 
 
 def test_create_qr_code_uses_cup_count_without_exposing_amounts(context):

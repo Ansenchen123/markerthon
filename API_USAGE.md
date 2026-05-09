@@ -39,6 +39,42 @@ Demo accounts:
 Authorization: Bearer <accessToken>
 ```
 
+### POST `/auth/register`
+
+商家註冊，會同時建立店家資料與商家帳號。註冊成功後直接回傳 JWT。
+
+Request:
+
+```json
+{
+  "username": "new_merchant",
+  "password": "password123",
+  "storeCode": "new-shop",
+  "storeName": "新店家"
+}
+```
+
+Response `201`:
+
+```json
+{
+  "accessToken": "<jwt>",
+  "tokenType": "bearer",
+  "store": {
+    "id": 4,
+    "code": "new-shop",
+    "name": "新店家"
+  }
+}
+```
+
+Failure:
+
+| Status | Meaning |
+|---:|---|
+| 409 | 商家帳號或店家代號已存在 |
+| 422 | 欄位格式不符合，例如密碼少於 8 碼 |
+
 ### POST `/auth/login`
 
 商家登入，成功後回傳 JWT 與商家資料。
@@ -320,6 +356,39 @@ curl -s "http://127.0.0.1:8000/merchant/stats/recovered?from=2026-05-08T00:00:00
 ## 政府端 API
 
 政府端 API 全部使用 `/government/...`，不和商家端 `/merchant/...` 混用。政府 token 不能呼叫商家 API，商家 token 也不能呼叫政府 API。
+
+### POST `/government/auth/register`
+
+政府端註冊，成功後直接回傳政府端 JWT。
+
+Request:
+
+```json
+{
+  "username": "new_gov",
+  "password": "password123"
+}
+```
+
+Response `201`:
+
+```json
+{
+  "accessToken": "<jwt>",
+  "tokenType": "bearer",
+  "user": {
+    "id": 2,
+    "username": "new_gov"
+  }
+}
+```
+
+Failure:
+
+| Status | Meaning |
+|---:|---|
+| 409 | 政府帳號已存在 |
+| 422 | 欄位格式不符合，例如密碼少於 8 碼 |
 
 ### POST `/government/auth/login`
 

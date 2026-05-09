@@ -15,13 +15,14 @@ from app.schemas import (
     GovernmentInvoiceSummary,
     GovernmentLoginResponse,
     GovernmentOverviewResponse,
+    GovernmentRegisterRequest,
     GovernmentScanEventResponse,
     GovernmentStoresResponse,
     GovernmentStoreStatsResponse,
     GovernmentUserResponse,
     LoginRequest,
 )
-from app.security import create_access_token, generate_qr_value, get_current_government_user, verify_password
+from app.security import create_access_token, generate_qr_value, get_current_government_user, hash_password, verify_password
 from app.time_utils import normalize_taipei, now_taipei
 
 
@@ -79,18 +80,35 @@ def _bounded_loans(db: Session, from_at: datetime, to_at: datetime):
     )
 
 
-@router.post("/auth/login", response_model=GovernmentLoginResponse)
-def government_login(payload: LoginRequest, db: Session = Depends(get_db)) -> GovernmentLoginResponse:
-    user = db.scalar(select(GovernmentUser).where(GovernmentUser.username == payload.username))
-    if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
-
+def _government_login_response(user: GovernmentUser) -> GovernmentLoginResponse:
     token = create_access_token({"sub": user.username, "userId": user.id, "role": "government"})
     return GovernmentLoginResponse(
         accessToken=token,
         tokenType="bearer",
         user=GovernmentUserResponse(id=user.id, username=user.username),
     )
+
+
+@router.post("/auth/register", response_model=GovernmentLoginResponse, status_code=status.HTTP_201_CREATED)
+def government_register(payload: GovernmentRegisterRequest, db: Session = Depends(get_db)) -> GovernmentLoginResponse:
+    existing_user = db.scalar(select(GovernmentUser).where(GovernmentUser.username == payload.username))
+    if existing_user is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+
+    user = GovernmentUser(username=payload.username, password_hash=hash_password(payload.password))
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return _government_login_response(user)
+
+
+@router.post("/auth/login", response_model=GovernmentLoginResponse)
+def government_login(payload: LoginRequest, db: Session = Depends(get_db)) -> GovernmentLoginResponse:
+    user = db.scalar(select(GovernmentUser).where(GovernmentUser.username == payload.username))
+    if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+
+    return _government_login_response(user)
 
 
 @router.get("/overview", response_model=GovernmentOverviewResponse)

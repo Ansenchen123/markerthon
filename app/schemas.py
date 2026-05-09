@@ -26,6 +26,18 @@ class LoginRequest(APIModel):
     password: str
 
 
+class MerchantRegisterRequest(APIModel):
+    username: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=8, max_length=128)
+    store_code: str = Field(alias="storeCode", min_length=1, max_length=40)
+    store_name: str = Field(alias="storeName", min_length=1, max_length=120)
+
+
+class GovernmentRegisterRequest(APIModel):
+    username: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=8, max_length=128)
+
+
 class StoreResponse(APIModel):
     id: int
     code: str
