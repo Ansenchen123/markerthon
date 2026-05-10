@@ -651,7 +651,7 @@ export function App() {
         {isLoggedIn && (
           <div className="topbar">
             <div className="brand-row">
-              <h1>還寶同步士</h1>
+              <h1>還寶同步者</h1>
               <i className="fa-solid fa-leaf" aria-hidden="true" />
             </div>
             <button className="icon-button" type="button" aria-label="通知">

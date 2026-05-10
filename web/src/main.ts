@@ -55,7 +55,7 @@ function renderSidebar() {
       <div class="brand">
         <img src="./assets/logo.png" alt="Logo" class="logo" style="width: 50px; height: 50px;" />
         <div>
-          <strong>環保餐具使用管理平台</strong>
+          <strong>還寶戰士管理平台</strong>
           <small>政府管理後台</small>
         </div>
       </div>
