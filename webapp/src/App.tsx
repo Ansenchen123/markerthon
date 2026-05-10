@@ -32,6 +32,7 @@ type StoreInfo = {
   id: number;
   code: string;
   name: string;
+  region: string;
   address: string;
   item: string;
 };
@@ -98,6 +99,7 @@ const fallbackStore: StoreInfo = {
   id: 0,
   code: 'ECO-CUP-028',
   name: '綠森咖啡 台北信義店',
+  region: '台北市信義區',
   address: '台北市信義區松仁路 88 號',
   item: '循環杯',
 };
@@ -302,6 +304,7 @@ export function App() {
       id: data.store.id,
       code: data.store.code,
       name: data.store.name,
+      region: data.store.region,
     };
 
     setAccessToken(data.accessToken);
@@ -376,6 +379,25 @@ export function App() {
   const openPage = (page: ActivePage) => {
     setActivePage(page);
     setScanView('home');
+  };
+
+  const updateCurrentStoreRegion = (region: string) => {
+    const nextStore = {
+      ...store,
+      region,
+    };
+
+    setStore(nextStore);
+    saveAuthCookie({
+      accessToken,
+      tokenType,
+      store: {
+        id: nextStore.id,
+        code: nextStore.code,
+        name: nextStore.name,
+        region: nextStore.region,
+      },
+    });
   };
 
   const loadMerchantStats = async () => {
@@ -590,6 +612,7 @@ export function App() {
           accessToken={accessToken}
           tokenType={tokenType}
           store={store}
+          onStoreRegionUpdate={updateCurrentStoreRegion}
           onLogout={logout}
         />
       );
@@ -1345,6 +1368,7 @@ function RegisterPage({
 }) {
   const [form, setForm] = useState({
     storeName: '',
+    region: '',
     userEmail: '',
     password: '',
   });
@@ -1374,6 +1398,7 @@ function RegisterPage({
               userEmail: form.userEmail,
               password: form.password,
               storeName: form.storeName,
+              region: form.region,
             });
             onRegisterSuccess(data);
           } catch (err) {
@@ -1394,6 +1419,21 @@ function RegisterPage({
               placeholder="綠森咖啡"
             />
             <i className="fa-solid fa-store" aria-hidden="true" />
+          </span>
+        </label>
+        <label>
+          店家地區
+          <span className="input-shell">
+            <input
+              required
+              type="text"
+              maxLength={80}
+              value={form.region}
+              onChange={(event) => updateField('region', event.target.value)}
+              placeholder="台北市信義區"
+              autoComplete="address-level2"
+            />
+            <i className="fa-solid fa-map-location-dot" aria-hidden="true" />
           </span>
         </label>
         <label>
@@ -2021,13 +2061,24 @@ function ProfilePage({
   accessToken,
   tokenType,
   store,
+  onStoreRegionUpdate,
   onLogout,
 }: {
   accessToken: string;
   tokenType: string;
   store: StoreInfo;
+  onStoreRegionUpdate: (region: string) => void;
   onLogout: () => void;
 }) {
+  const [region, setRegion] = useState(store.region);
+  const [isSavingRegion, setIsSavingRegion] = useState(false);
+  const [regionMessage, setRegionMessage] = useState('');
+  const [regionError, setRegionError] = useState('');
+
+  useEffect(() => {
+    setRegion(store.region);
+  }, [store.region]);
+
   return (
     <section className="profile-page" aria-label="用戶資料">
       <div className="profile-hero">
@@ -2059,7 +2110,63 @@ function ProfilePage({
             <dt>Name</dt>
             <dd>{store.name}</dd>
           </div>
+          <div>
+            <dt>Region</dt>
+            <dd>{store.region || '未設定'}</dd>
+          </div>
         </dl>
+      </article>
+
+      <article className="profile-card">
+        <h3>
+          <i className="fa-solid fa-map-location-dot" aria-hidden="true" />
+          地區設定
+        </h3>
+        <form
+          className="profile-region-form"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            const nextRegion = region.trim() || '未設定';
+
+            setRegionError('');
+            setRegionMessage('');
+            setIsSavingRegion(true);
+
+            try {
+              const updatedStore = await api.merchant.updateStoreRegion(
+                { region: nextRegion },
+                accessToken,
+              );
+              onStoreRegionUpdate(updatedStore.region || nextRegion);
+              setRegion(updatedStore.region || nextRegion);
+              setRegionMessage('地區已更新');
+            } catch (err) {
+              setRegionError(err instanceof Error ? err.message : '地區更新失敗，請稍後再試');
+            } finally {
+              setIsSavingRegion(false);
+            }
+          }}
+        >
+          <label>
+            店家所在地區
+            <span className="input-shell">
+              <input
+                type="text"
+                maxLength={80}
+                value={region}
+                onChange={(event) => setRegion(event.target.value)}
+                placeholder="台北市信義區"
+                autoComplete="address-level2"
+              />
+              <i className="fa-solid fa-map-location-dot" aria-hidden="true" />
+            </span>
+          </label>
+          {regionError && <p className="form-error">{regionError}</p>}
+          {regionMessage && <p className="form-success">{regionMessage}</p>}
+          <button className="auth-button secondary" disabled={isSavingRegion} type="submit">
+            {isSavingRegion ? '儲存中...' : '儲存地區'}
+          </button>
+        </form>
       </article>
 
       <article className="profile-card">

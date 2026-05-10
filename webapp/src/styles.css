@@ -1591,6 +1591,24 @@ h1 {
   text-align: right;
 }
 
+.profile-region-form {
+  display: grid;
+  gap: 12px;
+}
+
+.profile-region-form label {
+  display: grid;
+  gap: 8px;
+  color: #173829;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.profile-region-form .auth-button {
+  width: 100%;
+  justify-content: center;
+}
+
 .profile-summary {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

@@ -13,11 +13,13 @@ from app.schemas import (
     MerchantRecoveredStatsResponse,
     MerchantSoldStatsRow,
     MerchantSoldStatsResponse,
+    MerchantStoreRegionRequest,
     QRCodeCreate,
     QRCodeResponse,
     ReturnCondition,
     ReturnScanRequest,
     ReturnScanResponse,
+    StoreResponse,
 )
 from app.security import generate_qr_value, get_current_user, hash_qr_value
 from app.time_utils import due_at_from, now_taipei
@@ -65,6 +67,20 @@ def _row_bool(row: dict[str, str], key: str) -> bool:
 
 def _date_bounds(from_date: date, to_date: date) -> tuple[datetime, datetime]:
     return datetime.combine(from_date, time.min), datetime.combine(to_date + timedelta(days=1), time.min)
+
+
+@router.patch("/store/region", response_model=StoreResponse)
+def update_store_region(
+    payload: MerchantStoreRegionRequest,
+    current_user: MerchantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StoreResponse:
+    store = current_user.store
+    store.region = payload.region
+    db.add(store)
+    db.commit()
+    db.refresh(store)
+    return StoreResponse(id=store.id, code=store.code, name=store.name, region=store.region)
 
 
 def _remaining_for_issued_between(db: Session, *, store_id: int, from_date: date, to_date: date) -> int:

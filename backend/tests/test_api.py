@@ -222,6 +222,35 @@ def test_merchant_register_creates_store_user_and_token(context):
     assert same_store_second_user.json()["store"]["region"] == "台北市信義區"
 
 
+def test_merchant_can_update_store_region_repeatedly(context):
+    client, _ = context
+    merchant_headers = login_headers(client)
+    gov_headers = government_headers(client)
+
+    first_update = client.patch(
+        "/merchant/store/region",
+        headers=merchant_headers,
+        json={"region": "台北市信義區"},
+    )
+    assert first_update.status_code == 200
+    assert first_update.json()["code"] == "tea-shop"
+    assert first_update.json()["region"] == "台北市信義區"
+
+    second_update = client.patch(
+        "/merchant/store/region",
+        headers=merchant_headers,
+        json={"region": "新北市板橋區"},
+    )
+    assert second_update.status_code == 200
+    assert second_update.json()["region"] == "新北市板橋區"
+
+    regions = client.get("/government/web/region-distribution", headers=gov_headers)
+    assert regions.status_code == 200
+    region_counts = {row["region"]: row["enterpriseCount"] for row in regions.json()["regions"]}
+    assert "台北市大安區" not in region_counts
+    assert region_counts["新北市板橋區"] == 2
+
+
 def test_government_login_and_role_isolation(context):
     client, _ = context
     gov_headers = government_headers(client)

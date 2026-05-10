@@ -12,6 +12,7 @@ export type LoginResponse = {
     id: number;
     code: string;
     name: string;
+    region: string;
   };
 };
 
@@ -19,6 +20,7 @@ export type RegisterRequest = {
   userEmail: string;
   password: string;
   storeName: string;
+  region: string;
 };
 
 export type GovernmentAuthRequest = {
@@ -153,6 +155,10 @@ export type MerchantQrCodeResponse = {
 
 export type MerchantReturnScanRequest = {
   qrValue: string;
+};
+
+export type MerchantStoreRegionRequest = {
+  region: string;
 };
 
 export type MerchantReturnScanResponse = {
@@ -372,6 +378,14 @@ export const api = {
     list: () => apiRequest<unknown[]>('/api/rentals'),
   },
   merchant: {
+    updateStoreRegion: (body: MerchantStoreRegionRequest, accessToken: string) =>
+      apiRequest<LoginResponse['store']>('/merchant/store/region', {
+        method: 'PATCH',
+        body,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }),
     createQrCode: (body: MerchantQrCodeRequest, accessToken: string) =>
       apiRequest<MerchantQrCodeResponse>('/merchant/qr-codes', {
         method: 'POST',

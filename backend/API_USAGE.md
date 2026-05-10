@@ -143,6 +143,29 @@ Failure:
 | 401 | Email 或密碼錯誤 |
 | 422 | Email 格式錯誤 |
 
+### PATCH `/merchant/store/region`
+
+已登入商家更新店家所在地區，可重複設定。若 `region` 為空白，後端會存為 `未設定`。
+
+Request:
+
+```json
+{
+  "region": "新北市板橋區"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "id": 1,
+  "code": "tea-shop",
+  "name": "青山茶飲",
+  "region": "新北市板橋區"
+}
+```
+
 ## 四個主要商家 API
 
 ### 1. POST `/merchant/qr-codes`

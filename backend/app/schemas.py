@@ -98,6 +98,15 @@ class StoreResponse(APIModel):
     region: str
 
 
+class MerchantStoreRegionRequest(APIModel):
+    region: str = Field(default="未設定", min_length=1, max_length=80)
+
+    @field_validator("region")
+    @classmethod
+    def normalize_region(cls, value: str) -> str:
+        return value.strip() or "未設定"
+
+
 class LoginResponse(APIModel):
     access_token: str = Field(alias="accessToken")
     token_type: str = Field(default="bearer", alias="tokenType")
