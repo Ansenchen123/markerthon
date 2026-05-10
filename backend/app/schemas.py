@@ -98,6 +98,11 @@ class StoreResponse(APIModel):
     region: str
 
 
+class StoreRegionLookupResponse(APIModel):
+    store_name: str = Field(alias="storeName")
+    region: str
+
+
 class MerchantStoreRegionRequest(APIModel):
     region: str = Field(default="未設定", min_length=1, max_length=80)
 

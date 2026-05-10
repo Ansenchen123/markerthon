@@ -53,7 +53,7 @@ function renderSidebar() {
   return `
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark"><span></span></div>
+        <img src="./assets/logo.png" alt="Logo" class="logo" style="width: 50px; height: 50px;" />
         <div>
           <strong>環保餐具使用管理平台</strong>
           <small>政府管理後台</small>
@@ -68,7 +68,7 @@ function renderSidebar() {
         <button class="nav-item" type="button">${icon('store')}<span>特定店家查詢</span></button>
       </nav>
       <div class="sidebar-footer">
-        <div>© 2024 環境部 資源循環署</div>
+        <div>© 2026 火雞與他們的產地</div>
         <div>All rights reserved.</div>
       </div>
     </aside>
