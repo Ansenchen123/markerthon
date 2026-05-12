@@ -1,12 +1,18 @@
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import MerchantUser, Store
-from app.schemas import LoginRequest, LoginResponse, MerchantRegisterRequest, StoreResponse
+from app.schemas import (
+    LoginRequest,
+    LoginResponse,
+    MerchantRegisterRequest,
+    StoreRegionLookupResponse,
+    StoreResponse,
+)
 from app.security import create_access_token, hash_password, verify_password
 
 
@@ -39,6 +45,18 @@ def _generate_store_code(db: Session) -> str:
         if exists is None:
             return code
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to generate store code")
+
+
+@router.get("/auth/stores/region", response_model=StoreRegionLookupResponse)
+def get_store_region(
+    store_name: str = Query(..., alias="storeName", min_length=1),
+    db: Session = Depends(get_db),
+) -> StoreRegionLookupResponse:
+    store = db.scalar(select(Store).where(Store.name == store_name.strip()))
+    if store is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
+
+    return StoreRegionLookupResponse(storeName=store.name, region=store.region)
 
 
 @router.post("/auth/register", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)

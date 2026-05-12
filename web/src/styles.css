@@ -59,6 +59,202 @@ svg {
   display: flex;
 }
 
+.opening-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: #f7fffd;
+  background:
+    linear-gradient(135deg, rgba(7, 63, 56, 0.98), rgba(9, 115, 96, 0.96)),
+    url("../assets/island.jpg") center / cover;
+  isolation: isolate;
+}
+
+.opening-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 54px 54px;
+  mask-image: linear-gradient(180deg, transparent, #000 18%, #000 82%, transparent);
+  animation: openingGrid 2.8s ease-out both;
+  z-index: -2;
+}
+
+.opening-screen::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 38%;
+  background: linear-gradient(180deg, transparent, rgba(3, 35, 32, 0.72));
+  z-index: -1;
+}
+
+.opening-logo-wrap {
+  width: clamp(112px, 12vw, 164px);
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  border-radius: 28px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 22px 52px rgba(4, 35, 32, 0.3);
+  backdrop-filter: blur(18px);
+  animation: openingLogo 1.1s cubic-bezier(.2, .9, .24, 1) both;
+}
+
+.opening-logo {
+  width: 68%;
+  height: 68%;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.24));
+}
+
+.opening-orbit {
+  position: absolute;
+  width: clamp(260px, 38vw, 520px);
+  aspect-ratio: 1;
+  border: 1px solid rgba(189, 245, 229, 0.35);
+  border-radius: 50%;
+  animation: openingSpin 9s linear infinite;
+}
+
+.opening-orbit::before,
+.opening-orbit::after,
+.opening-orbit span {
+  content: "";
+  position: absolute;
+  inset: 11%;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.opening-orbit::after {
+  inset: 26%;
+  border-color: rgba(119, 219, 188, 0.38);
+}
+
+.opening-orbit span {
+  inset: auto;
+  width: 42%;
+  height: 1px;
+  left: 50%;
+  top: 50%;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(90deg, rgba(203, 255, 239, 0.86), transparent);
+  transform-origin: left center;
+}
+
+.opening-orbit span:nth-child(1) { transform: rotate(18deg); }
+.opening-orbit span:nth-child(2) { transform: rotate(142deg); }
+.opening-orbit span:nth-child(3) { transform: rotate(266deg); }
+
+.opening-copy {
+  position: absolute;
+  top: calc(50% + clamp(86px, 10vw, 126px));
+  width: min(86vw, 620px);
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  text-align: center;
+  animation: openingCopy 1s ease 0.45s both;
+}
+
+.opening-kicker,
+.opening-copy small {
+  color: rgba(232, 255, 249, 0.78);
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.opening-copy strong {
+  font-size: clamp(28px, 4.2vw, 54px);
+  line-height: 1.05;
+  font-weight: 900;
+}
+
+.opening-copy small {
+  text-transform: none;
+}
+
+.opening-progress {
+  position: absolute;
+  top: calc(50% + clamp(190px, 20vw, 252px));
+  width: min(320px, 62vw);
+  height: 4px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.24);
+  overflow: hidden;
+}
+
+.opening-progress span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: #d7fff1;
+  transform-origin: left center;
+  animation: openingProgress 3s ease both;
+}
+
+.opening-skip {
+  position: absolute;
+  right: 22px;
+  bottom: 20px;
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  border-radius: 6px;
+  color: #f7fffd;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 13px;
+  font-weight: 900;
+  backdrop-filter: blur(10px);
+}
+
+.opening-screen.is-leaving {
+  pointer-events: none;
+  animation: openingLeave 0.68s ease forwards;
+}
+
+@keyframes openingGrid {
+  from { opacity: 0; transform: scale(1.08); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes openingLogo {
+  from { opacity: 0; transform: translateY(18px) scale(0.88); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes openingCopy {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes openingSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes openingProgress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes openingLeave {
+  to {
+    opacity: 0;
+    transform: scale(1.025);
+  }
+}
+
 .sidebar {
   width: 258px;
   flex: 0 0 258px;

@@ -18,6 +18,8 @@ let selectedStoreName = '青山茶飲';
 let usageTrendChart: Chart | null = null;
 let enterpriseChart: Chart | null = null;
 let regionChart: Chart | null = null;
+let hasPlayedOpening = false;
+let openingTimer: number | null = null;
 
 function formatNumber(value: number | undefined) {
   return (value ?? 0).toLocaleString('zh-TW');
@@ -47,6 +49,50 @@ function icon(name: string) {
   };
 
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name] ?? ''}</svg>`;
+}
+
+function renderOpeningAnimation() {
+  return `
+    <section class="opening-screen" id="openingScreen" aria-label="Opening animation">
+      <div class="opening-orbit" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <div class="opening-logo-wrap">
+        <img src="./assets/logo.png" alt="Logo" class="opening-logo" />
+      </div>
+      <div class="opening-copy">
+        <span class="opening-kicker">Reusable Container Dashboard</span>
+        <strong>Green Flow Console</strong>
+        <small>Loading live operational insight</small>
+      </div>
+      <div class="opening-progress" aria-hidden="true"><span></span></div>
+      <button class="opening-skip" id="openingSkip" type="button">Skip</button>
+    </section>
+  `;
+}
+
+function dismissOpening() {
+  const openingScreen = document.querySelector<HTMLElement>('#openingScreen');
+  if (!openingScreen) return;
+
+  hasPlayedOpening = true;
+  openingScreen.classList.add('is-leaving');
+  window.setTimeout(() => openingScreen.remove(), 680);
+}
+
+function bindOpeningAnimation() {
+  if (hasPlayedOpening) return;
+
+  openingTimer = window.setTimeout(dismissOpening, 3200);
+  document.getElementById('openingSkip')?.addEventListener('click', () => {
+    if (openingTimer) {
+      window.clearTimeout(openingTimer);
+      openingTimer = null;
+    }
+    dismissOpening();
+  });
 }
 
 function renderSidebar() {
@@ -355,11 +401,14 @@ async function renderDashboard() {
   if (!app) return;
 
   app.innerHTML = `
+    ${hasPlayedOpening ? '' : renderOpeningAnimation()}
     ${renderSidebar()}
     <main class="dashboard">
       <div class="dashboard-loading">登入並載入 API 資料中...</div>
     </main>
   `;
+
+  bindOpeningAnimation();
 
   try {
     await loginGovernment();

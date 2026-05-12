@@ -1374,10 +1374,37 @@ function RegisterPage({
   });
   const [accepted, setAccepted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingRegion, setIsLoadingRegion] = useState(false);
   const [error, setError] = useState('');
 
   const updateField = (field: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const loadStoreRegion = async () => {
+    const storeName = form.storeName.trim();
+
+    if (!storeName) {
+      return null;
+    }
+
+    setIsLoadingRegion(true);
+
+    try {
+      const data = await api.auth.storeRegion(storeName);
+      setForm((current) =>
+        current.storeName.trim() === storeName ? { ...current, region: data.region } : current,
+      );
+      return data.region;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        return null;
+      }
+
+      throw err;
+    } finally {
+      setIsLoadingRegion(false);
+    }
   };
 
   return (
@@ -1394,11 +1421,12 @@ function RegisterPage({
           setIsSubmitting(true);
 
           try {
+            const storeRegion = await loadStoreRegion().catch(() => null);
             const data = await api.auth.register({
               userEmail: form.userEmail,
               password: form.password,
               storeName: form.storeName,
-              region: form.region,
+              region: (storeRegion ?? form.region.trim()) || undefined,
             });
             onRegisterSuccess(data);
           } catch (err) {
@@ -1416,6 +1444,9 @@ function RegisterPage({
               type="text"
               value={form.storeName}
               onChange={(event) => updateField('storeName', event.target.value)}
+              onBlur={() => {
+                void loadStoreRegion().catch(() => undefined);
+              }}
               placeholder="綠森咖啡"
             />
             <i className="fa-solid fa-store" aria-hidden="true" />
@@ -1425,12 +1456,12 @@ function RegisterPage({
           店家地區
           <span className="input-shell">
             <input
-              required
               type="text"
               maxLength={80}
               value={form.region}
               onChange={(event) => updateField('region', event.target.value)}
               placeholder="台北市信義區"
+              disabled={isLoadingRegion}
               autoComplete="address-level2"
             />
             <i className="fa-solid fa-map-location-dot" aria-hidden="true" />

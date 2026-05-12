@@ -20,6 +20,11 @@ export type RegisterRequest = {
   userEmail: string;
   password: string;
   storeName: string;
+  region?: string;
+};
+
+export type StoreRegionLookupResponse = {
+  storeName: string;
   region: string;
 };
 
@@ -309,6 +314,10 @@ export const api = {
         method: 'POST',
         body,
       }),
+    storeRegion: (storeName: string) =>
+      apiRequest<StoreRegionLookupResponse>(
+        `/auth/stores/region?${new URLSearchParams({ storeName }).toString()}`,
+      ),
     me: () => apiRequest<{ user: ApiUser; merchant?: ApiMerchant }>('/api/auth/me'),
   },
   government: {
