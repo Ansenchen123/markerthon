@@ -103,8 +103,8 @@ export type DashboardQuery = {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 const TOKEN_KEY = 'governmentAccessToken';
 const GOVERNMENT_LOGIN = {
-  userEmail: 'gov.admin@example.com',
-  password: 'password123',
+  userEmail: import.meta.env.VITE_DEMO_GOVERNMENT_EMAIL ?? '',
+  password: import.meta.env.VITE_DEMO_GOVERNMENT_PASSWORD ?? '',
 };
 
 let accessToken = localStorage.getItem(TOKEN_KEY) ?? '';
@@ -141,6 +141,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export async function loginGovernment() {
+  if (!GOVERNMENT_LOGIN.userEmail || !GOVERNMENT_LOGIN.password) {
+    throw new Error('Set VITE_DEMO_GOVERNMENT_EMAIL and VITE_DEMO_GOVERNMENT_PASSWORD for local demo login.');
+  }
+
   accessToken = '';
   const data = await request<LoginResponse>('/government/auth/login', {
     method: 'POST',

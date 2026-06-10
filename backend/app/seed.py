@@ -16,7 +16,7 @@ DEMO_STORES = [
 ]
 DEMO_PASSWORD = "password123"
 DEMO_GOVERNMENT_USERS = [
-    ("gov.admin@example.com", "password123"),
+    ("gov.admin@example.com", DEMO_PASSWORD),
 ]
 
 
@@ -76,7 +76,7 @@ def main() -> None:
     finally:
         db.close()
     print("Seeded demo stores, merchant users, and government users.")
-    print("Password for all demo users: password123")
+    print(f"Password for all demo users: {DEMO_PASSWORD}")
 
 
 if __name__ == "__main__":

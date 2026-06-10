@@ -1,6 +1,4 @@
-# Frontend Setup
-
-此 repo 是純前端 Web App 專案。後端不放在此專案內，前端只透過 HTTP API 串接。
+# Merchant Frontend Setup
 
 ## Stack
 
@@ -10,7 +8,7 @@
 
 ## Commands
 
-```bash
+```powershell
 npm install
 npm run dev
 npm run build
@@ -19,10 +17,10 @@ npm run preview
 
 ## API Boundary
 
-複製 `.env.example` 成 `.env.local`，並設定後端 API 網址：
+The merchant frontend reads `VITE_API_BASE_URL` and defaults to `http://127.0.0.1:8000`.
 
-```bash
-VITE_API_BASE_URL=https://your-api.example.com
+```powershell
+$env:VITE_API_BASE_URL = "http://127.0.0.1:8000"
 ```
 
-API 呼叫集中放在 `src/api`，避免前端頁面直接散落後端網址或 request 細節。
+HTTP calls are isolated in `webapp/src/api/client.ts`. The merchant frontend uses `/auth` and `/merchant` endpoints only.

@@ -12,7 +12,7 @@ from app.database import SessionLocal
 from app.init_db import init_db
 from app.main import app
 from app.models import Loan, RefundLedger, ScanEvent
-from app.seed import seed_demo_data
+from app.seed import DEMO_PASSWORD, seed_demo_data
 from app.time_utils import now_taipei
 
 
@@ -27,7 +27,6 @@ STORE_CODES = {
     "bento": "bento-shop",
     "cafe": "cafe-shop",
 }
-DEMO_PASSWORD = "password123"
 DEMO_INVOICE_PREFIX = "DEMO-"
 
 

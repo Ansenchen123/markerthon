@@ -5,3 +5,8 @@ __pycache__/
 data/
 *.db
 .env
+.env.local
+.env.*.local
+*.log
+*.err.log
+dist/
