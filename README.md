@@ -7,6 +7,10 @@ Markerthon is a local demonstration system for reusable container borrowing, ret
 
 The repository is intended to run entirely on a developer machine. The backend uses SQLite, the two frontends use Vite, and the launcher in `run.py` can start all three services together.
 
+## Screenshot
+
+![Markerthon government dashboard](docs/screenshots/government-dashboard.png)
+
 ## Applications
 
 - Backend API in `backend/`: FastAPI, SQLite models, Alembic migrations, seed data, daily CSV report generation, and tests.
