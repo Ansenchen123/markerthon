@@ -1,4 +1,5 @@
 # Markerthon Reusable Container System
+![CI](https://github.com/Ansenchen123/markerthon/actions/workflows/ci.yml/badge.svg)
 
 ## Overview
 
